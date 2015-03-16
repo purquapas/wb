@@ -1,0 +1,251 @@
+#!/usr/local/bin/cbsd
+#v10.1.6
+globalconf="${workdir}/cbsd.conf";
+MYARG="jname out"
+MYOPTARG="ip6wa epair fbsd"
+MYDESC="Make jailv2 config file"
+ADDHELP="ip6wa - ip6 work-around (sleep 3 seconds) enabled\n\
+epair - this is mandatory for vnet=1 type jail. Sets for jail vnic\n"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+. ${tools}
+
+init $*
+
+# fill $interface variable by physical NIC
+get_iface_by_ip()
+{
+	local ip
+
+	if [ -n "${1}" ]; then
+		ip="${1}"
+	else
+		ip="0.0.0.0"
+	fi
+
+	# autodetect correct interface
+	if [ "${interface}" = "auto" ]; then
+		interface=$( getnics-by-ip ip=${ip} )
+	fi
+}
+
+
+# MAIN
+readconf jail-freebsd-default.conf
+
+JAILRCCONF="${ftmpdir}/rc.conf_${jname}"
+jmkrcconf jname=${jname} > ${JAILRCCONF}
+. ${JAILRCCONF}
+init_jail_path
+/bin/rm -f ${JAILRCCONF}
+
+[ ${vnet} -eq 1 -a -z "${epair}" ] && err 1 "${MAGENTA}Error: Jail is ${GREEN}vnet${NORMAL}-feature enabled, but epair is not set.${NORMAL}"
+
+[ $baserw -eq 1 ] && path=$data
+
+freebsdhostversion=$( ${miscdir}/elf_tables --ver /usr/sbin/jail )
+[ -z "${freebsdhostversion}" ] && freebsdhostversion="0"
+
+#rewrite from cbsd zero to null
+[ "${exec_start}" = "0" ] && unset exec_start
+[ "${exec_stop}" = "0" ] && unset exec_stop
+[ "${exec_poststart}" = "0" ] && unset exec_poststart
+[ "${exec_poststop}" = "0" ] && unset exec_poststop
+[ "${exec_prestart}" = "0" ]  && unset exec_prestart
+[ "${exec_prestop}" = "0" ] && unset exec_prestop
+[ "${interface}" = "0" ] && unset interface
+[ "${exec_consolelog}" = "0" ] && unset exec_consolelog
+
+[ -z "${fbsd}" ] && fbsd=0
+
+if [ "${interface}" = "auto" ]; then
+	geniplist ${ip4_addr}
+	for pureip in ${IPS}; do
+		iface=$( getnics-by-ip ip=${pureip} )
+		ipwmask ${pureip}
+		if [ -n "$iface" ]; then
+			${ECHO} "${MAGENTA}NIC automatically selected: ${GREEN}${iface}${NORMAL}"
+			interface=${iface}
+			break
+		else
+			err 1 "${MAGENTA}Can't determine interfaces for: ${GREEN}${pureip}${NORMAL}"
+		fi
+	done
+fi
+
+# ip6 work around: sleep for 3 seconds in prestart
+[ "${ip6wa}" = "1" ] && exec_prestart="sleep 3; ${exec_prestart}"
+
+# rename interface only for FreeBSD jail, not for Linux jail
+[ "${vnet}" = "1" -a -n "${epair}" -a ${fbsd} -eq 1 ] && exec_start="/sbin/ifconfig ${epair} name eth0 up; ${exec_start}"
+
+# attach and detach ZFS mount inside jail
+if [ "${fbsd}" -eq 1 -a "${allow_zfs}" = "1" ]; then
+	for _zfsfstab in "${jailfstabdir}/${jailfstabpref}${jname}" "${jailfstabdir}/${jailfstabpref}${jname}.local"; do
+		[ ! -f "${_zfsfstab}" ] && continue
+		if grep zfs "${_zfsfstab}" > /dev/null 2>&1; then
+			exec_poststart="/usr/local/bin/cbsd attachzfs fstab=${_zfsfstab} jname=${jname}; ${exec_portstart}"
+			exec_start="/sbin/zfs mount -a; ${exec_start}"
+			exec_prestop="/usr/local/bin/cbsd detachzfs fstab=${_zfsfstab} jname=${jname}; ${exec_prestop}"
+		fi
+	done
+fi
+
+#exec.clean is dangerous with infinity exec.timeout and exec.stop and external password backend (login_getpwclass with broken ldap for example)
+
+cat > ${out} << EOF
+${jname} {
+exec.start = "${exec_start}";
+exec.stop = "${exec_stop}";
+exec.poststart="${exec_poststart}";
+exec.poststop="${exec_poststop}";
+exec.prestart="${exec_prestart}";
+exec.prestop="${exec_prestop}";
+host.hostname = "${host_hostname}";
+path = "${path}";
+allow.raw_sockets;
+allow.socket_af;
+allow.chflags;
+allow.sysvipc;
+EOF
+
+ALIAS4=""
+ALIAS6=""
+
+# gen ipX.addr params
+if [ ${vnet} -eq 0 ]; then
+	# when vnet we not need ipX.addr
+	OLDIFS="${IFS}"
+	IFS=","
+	for a in ${ip4_addr}; do
+		unset IWM VHID
+		iptype $a
+		_inet=$?
+		[ ${_inet} -eq 0 ] && continue
+
+		# this is carp records
+		if [ -n "${VHID}" ]; then
+#			a=$( carpcfg inter=0 mode=show vhid=${VHID} ip=${IPWVHID} )
+			a=$( carpcfg inter=0 mode=show vhid=${VHID} ip=${IWM} )
+			_res=$?
+			if [ ${_res} -ne 0 ]; then
+				err 1 "${MAGENTA}Error in CARP area from makejconf: ${a}${NORMAL}"
+				continue
+			fi
+		else
+			if [ -n "${interface}" ]; then
+				get_iface_by_ip ${IWM}
+				a="${interface}|${a}"
+			fi
+		fi
+
+		case ${_inet} in
+			1)
+				if [ -z "$ALIAS4" ]; then
+					echo "ip4.addr = \"${a}\";" >> ${out}
+					[ "${mkhostsfile}" != "0" ] && mkjhosts ${IWM} ${data}/etc/hosts
+					ALIAS4="1"
+				else
+					[ "${mkhostsfile}" != "0" ] && mkjhosts ${IWM} ${data}/etc/hosts
+					echo "ip4.addr += \"${a}\";" >> ${out}
+				fi
+				;;
+			2)
+				if [ -z "$ALIAS6" ]; then
+					echo "ip6.addr = \"${a}\";" >> ${out}
+					ALIAS6="1"
+				else
+					echo "ip6.addr += \"${a}\";" >> ${out}
+				fi
+				;;
+		esac
+	done
+	IFS="${OLDIFS}"
+else
+	# vnet
+	cat >> ${out} <<EOF
+vnet = new;
+#vnet = inherit;
+vnet.interface = ${epair};
+EOF
+fi
+
+if [ "$devfs" = "NO" ]; then
+	echo "mount.nodevfs;" >> ${out}
+else
+	echo "mount.devfs;" >> ${out}
+fi
+
+[ -n "${devfs_ruleset}" ] && echo "devfs_ruleset=\"${devfs_ruleset}\";" >> $out
+
+if [ "${allow_mount}" = "1" ]; then
+	echo "allow.mount = \"true\";" >> ${out}
+	echo "enforce_statfs=\"1\";" >>${out}
+fi
+
+if [ "${allow_nullfs}" = "1" ]; then
+	echo "allow.mount.nullfs = \"true\";" >> ${out}
+fi
+
+# this feature available for FreeBSD 10.2+
+_res=$( /sbin/sysctl -q security.jail.mount_fdescfs_allowed >/dev/null 2>&1 )
+if [ $? -ne 1 ]; then
+	if [ "${allow_fdescfs}" = "1" ]; then
+		echo "allow.mount.fdescfs = \"true\";" >> ${out}
+	fi
+fi
+
+if [ "${allow_devfs}" = "1" ]; then
+	echo "allow.mount.devfs = \"true\";" >> ${out}
+fi
+
+if [ -n "${exec_timeout}" ]; then
+	echo "exec.timeout = \"${exec_timeout}\";" >> ${out}
+fi
+
+if [ -n "${exec_fib}" ]; then
+	echo "exec.fib = \"${exec_fib}\";" >> ${out}
+fi
+
+if [ -n "${stop_timeout}" ]; then
+	echo "stop.timeout = \"${exec_timeout}\";" >> ${out}
+fi
+
+# this features only available on FreeBSD 10.0 BETA3+
+if [ $freebsdhostversion -gt 1000500 -a -n "${mount_fdescfs}" ]; then
+	echo "mount.fdescfs = \"${mount_fdescfs}\";" >> ${out}
+fi
+
+if [ -n "${allow_dying}" ]; then
+	echo "allow.dying = \"${allow_dying}\";" >> ${out}
+fi
+
+if [ -n "${allow_procfs}" ]; then
+	echo "allow.mount.procfs= \"${allow_procfs}\";" >> ${out}
+fi
+
+# this feature only available on FreeBSD 10.0 BETA3+
+if [ ${freebsdhostversion} -gt 1000500 -a -n "${allow_tmpfs}" ]; then
+	echo "allow.mount.tmpfs= \"${allow_tmpfs}\";" >> ${out}
+fi
+
+if [ -n "${allow_zfs}" ]; then
+	echo "allow.mount.zfs= \"${allow_zfs}\";" >> ${out}
+fi
+
+_ret=$( /sbin/sysctl -n security.jail.dev_io_access 2>/dev/null )
+if [ -n "${_ret}" -a -n "${allow_kmem}" ]; then
+	echo "allow.dev_io_access= \"${allow_kmem}\";" >> ${out}
+	echo "allow.dev_dri_access= \"${allow_kmem}\";" >> ${out}
+fi
+
+if [ -n "${exec_consolelog}" ]; then
+	[ "${exec_consolelog}" = "1" ] && exec_consolelog="${logdir}/${jname}.log"
+	echo "exec.consolelog= \"${exec_consolelog}\";" >> ${out}
+fi
+
+echo "}" >> ${out}

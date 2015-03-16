@@ -1,0 +1,227 @@
+#!/usr/local/bin/cbsd
+#v10.1.1
+MYARG=""
+MYOPTARG="jname inter"
+MYDESC="Stop jail"
+CBSDMODULE="jail"
+EXTHELP="wf_jstop_jstart.html"
+
+. ${subr}
+. ${system}
+. ${mdtools}
+. ${strings}
+. ${tools}
+
+[ -z "${1}" ] && select_jail_by_list -s "List of online jail" -a "On" -r ${sqlreplica}
+init $*
+
+[ -n "${inter}" ] && shift
+
+# users custom stop script
+# $1 - is source dir (stop.d start.d)
+external_exec_script()
+{
+	local _res
+	local _dir="${1}"
+
+	[ -z "${_dir}" ] && return 1
+
+	[ ! -d "${jailsysdir}/${jname}/${_dir}" ] && return 0
+	[ -z "$( /bin/ls ${jailsysdir}/${jname}/${_dir}/ )" ] && return 0
+	[ -d "${data}/tmp/${_dir}" ] && rm -rf "${data}/tmp/${_dir}"
+	/bin/cp -a "${jailsysdir}/${jname}/${_dir}" ${data}/tmp/${_dir}
+
+	/usr/bin/find "${data}/tmp/${_dir}" -type f -depth 1 -maxdepth 1 -exec /usr/bin/basename {} \; | while read _file; do
+		${ECHO} "${MAGENTA}Execute script: ${GREEN}${_file}${NORMAL}"
+		jexec jname="${jname}" /tmp/${_dir}/${_file}
+	done
+	/bin/rm -rf "${data}/tmp/${_dir}"
+}
+
+# users custom stop for executing in master host
+# $1 - is source dir name ( master_poststop.d master_prestop.d )
+external_exec_master_script()
+{
+	local _res
+	local _dir="${1}"
+
+	[ -z "${_dir}" ] && return 1
+
+	local _srcdir="${jailsysdir}/${jname}/${_dir}"
+
+	[ ! -d "${_srcdir}" ] && return 0
+	[ -z "$( /bin/ls ${_srcdir}/ )" ] && return 0
+
+	/usr/bin/find "${_srcdir}" -type f -depth 1 -maxdepth 1 -exec /usr/bin/basename {} \; |while read _file; do
+		${ECHO} "${MAGENTA}Execute master script: ${GREEN}${_file}${NORMAL}"
+		${_srcdir}/${_file}
+	done
+}
+
+exec_master_prestop()
+{
+#	eval CMD=\${exec_master_prestop${i}}
+	eval CMD=\${exec_master_prestop}
+	[ -z "${CMD}" -o "${CMD}" = "0" ] && return 0
+	${ECHO} "${MAGENTA}${jname} Master exec prestop: ${GREEN}${CMD}${NORMAL}"
+	${CMD}
+}
+
+exec_prestop()
+{
+	eval CMD=\${exec_prestop}
+	[ -z "${CMD}" -o "${CMD}" = "0" ] && return 0
+	${ECHO} "${MAGENTA}${jname} exec exec_prestop: ${GREEN}${CMD}${NORMAL}"
+	/usr/sbin/chroot ${path} ${CMD}
+}
+
+
+exec_master_poststop()
+{
+	eval CMD=\${exec_master_poststop}
+	[ -z "${CMD}" -o "${CMD}" = "0" ] && return 0
+	${ECHO} "${MAGENTA}${jname} Master exec afterstop: ${GREEN}${CMD}${NORMAL}"
+	${CMD}
+}
+
+exec_poststop()
+{
+	eval CMD=\${exec_poststop}
+	[ -z "${CMD}" -o "${CMD}" = "0" ] && return 0
+	${ECHO} "${MAGENTA}${jname} exec exec_poststop: ${GREEN}${CMD}${NORMAL}"
+	chroot ${path} ${CMD}
+	i=$((i + 1))
+}
+
+
+# MAIN
+if [ $# -gt 1 ]; then
+	
+	# recursive stop
+	JLIST=$*
+	for jname in ${JLIST}; do
+		/usr/sbin/daemon -p ${ftmpdir}/jstop.${jname}.$$ /usr/local/bin/cbsd jstop jname=${jname}
+		#lets save .pid file
+		sleep 1
+		[ -f "${ftmpdir}/jstop.${jname}.$$" ] && cbsd_pwait --pid=$( /bin/cat ${ftmpdir}/jstop.${jname}.$$ ) --timeout=${parallel}
+	done
+
+	wait_for_fpid stop
+
+	err 0 "${MAGENTA}Multiple stop: ${GREEN}done${NORMAL}"
+fi
+
+[ -z "${jname}" ] && jname=$1
+
+. ${jrcconf}
+if [ $? -eq 1 ]; then
+	[ $sqlreplica -eq 0 ] && err 1 "${MAGENTA}No such jail: ${GREEN}${jname}${NORMAL}"
+	remotenode=$( jwhereis $jname )
+	[ -z "${remotenode}" ] && err 1 "${MAGENTA}No such jail: ${GREEN}${jname}${NORMAL}"
+	for i in ${remotenode}; do
+		${ECHO} "${MAGENTA}Remote jstop: ${GREEN}${jname} ${MAGENTA}on${GREEN} ${i}${NORMAL}"
+		rexe node=${i} cbsd jstop jname=${jname}
+	done
+	exit 0
+fi
+[ ${jid} -eq 0 ] && err 1 "${MAGENTA}Not Running: ${GREEN}${jname}${NORMAL}"
+[ ${status} -eq 3 ] && err 1 "${MAGENTA}Jail in maintenance mode${NORMAL}"
+[ "${emulator}" = "bhyve" ] && err 1 "${MAGENTA}For bhyve jail use: ${GREEN}cbsd bstop ${jname} ${MAGENTA}instead${NORMAL}"
+
+. ${workdir}/universe.subr
+init_basedir
+
+if [ $vnet -eq 1 ]; then
+	. ${vimageconf}
+	myepair=$( get_my_device epair ${jname} )
+	[ -z "${myepair}" ] && ${ECHO} "${MAGENTA}Warning: Cant find epair for vnet-type jail:${GREEN}${jname}${NORMAL}"
+fi
+
+#determine that jail is FreeBSD. Useful for vnet operation in makejconf and
+is_freebsd=0
+
+if [ $baserw -eq 1 ]; then
+	elftest=${data}/bin/sh
+else
+	elftest="${BASE_DIR}/bin/sh"
+fi
+
+[ -f "${elftest}" ] && osname=$( ${miscdir}/elf_tables --osname ${elftest} )
+
+[ "${osname}" = "freebsd" ] && is_freebsd=1
+
+makejconf jname=${jname} out=${ftmpdir}/${jname}.conf epair=${myepair}b fbsd=${is_freebsd}
+
+eval multiips4=\"\$ip\"
+[ $baserw -eq 1 ] && path=$data
+
+fwcounters jname=${jname} mode=remove
+
+external_exec_master_script "master_prestop.d"
+exec_master_prestop
+exec_prestop
+
+#rctl area
+${ECHO} "${MAGENTA}Stoping jail: ${GREEN}${jname}, parallel timeout=${parallel}${NORMAL}"
+jrctl jname=${jname} mode=unset >/dev/null 2>&1
+sleep 2
+
+external_exec_script "stop.d"
+/usr/sbin/jail -f ${ftmpdir}/${jname}.conf -r ${jname}
+
+exec_master_poststop
+external_exec_master_script "master_poststop.d"
+exec_poststop
+
+[ ${vnet} -eq 1 -a -n "${myepair}" ] && ifconfig ${myepair} destroy
+
+# waiting for fixed kqueue in upstream
+/usr/sbin/jail -r ${ST} > /dev/null 2>&1
+/usr/sbin/jail -r ${ST} > /dev/null 2>&1
+/usr/sbin/jail -r ${ST} > /dev/null 2>&1
+/usr/sbin/jail -r ${ST} > /dev/null 2>&1
+
+cbsdsql local UPDATE jails SET jid=0,status=0 WHERE jname=\"${jname}\"
+
+jaillock="${jailsysdir}/${jname}/locked"
+
+[ -f "${jaillock}" ] && /bin/rm -f ${jaillock}
+
+if [ "${ver}" != "empty" ]; then
+	${ECHO} "${MAGENTA}Updating: ${GREEN}pkg info${NORMAL}"
+	pkg mode=info nomount=1 jname=${jname} > ${jailsysdir}/${jname}/pkg_info
+fi
+
+[ -n "${mdsize}" -a "${mdsize}" != "0" ] && MDFILE=$( eval find_md_by_mountpath ${data} )
+
+#umount_cdirs ${path}
+jcleanup jname=${jname}
+geniplist ${multiips4}
+
+for pureip in ${IPS}; do
+	iptype $pureip
+	_inet=$?
+	if [ -n "${interface}" -a "${interface}" != "0" ]; then
+		iface=$( getnics-by-ip ip=${pureip} )
+		ipwmask ${pureip}
+		if [ -z "$IWM" ]; then
+			case ${_inet} in
+				1)
+					MODIF="inet"
+					;;
+				2)
+					MODIF="inet6" ;;
+			esac
+			/sbin/ifconfig ${iface} ${MODIF} ${pureip} -alias
+		fi
+	fi
+done
+
+# make id file
+UNDhost_hostname=$( ${ECHO} ${host_hostname} |tr  "." "_" )
+FID="/var/run/jail_${UNDhost_hostname}.id"
+[ ! -f "${FID}" ] || rm -f ${FID}
+
+[ -n "${mdsize}" -a "${mdsize}" != "0" -a -n "${MDFILE}" ] && unmountmd md=${MDFILE}
+[ -n "${ddns_zone_list}" ] && ddns mode=delete jname=${jname}
+rm -f ${ftmpdir}/${jname}.conf

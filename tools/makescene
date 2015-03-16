@@ -1,0 +1,84 @@
+#!/bin/sh
+#v10.1.0
+globalconf="${workdir}/cbsd.conf";
+MYARG="scene"
+MYOPTARG="ver arch"
+MYDESC="Make jail by scenario file"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+. ${tools}
+. ${system}
+. ${strings}
+
+init $*
+
+[ ! -f "${scene}" ] && err 1 "No such scene file"
+
+over=$ver
+oarch=$arch
+
+. ${scene}
+. ${buildconf}
+
+SCENEDIR=$( dirname ${scene} )
+JCONF=$( find ${SCENEDIR} -depth 1 -maxdepth 1 -name *.jconf -exec realpath {} \; )
+
+[ ! -f "${JCONF}" ] && err 1 "No jconf ${JCONF}"
+
+pkgfile="${ftmpdir}/${jname}.$$"
+workjconf="${ftmpdir}/${jname}.$$.jconf"
+
+#replace CBSD_WORKDIR if exist
+sed s:CBSD_WORKDIR:${workdir}:g ${JCONF} > ${workjconf}
+
+${SYSRC_CMD} -qf ${workjconf} ver="${ver}" > /dev/null
+${SYSRC_CMD} -qf ${workjconf} arch="${arch}" > /dev/null
+#${SYSRC_CMD} -qf ${workjconf} pkglist="${pkgfile}" > /dev/null
+. ${workjconf}
+${SYSRC_CMD} -qf ${workjconf} packagesite="${packagesite}" > /dev/null
+
+ADDFLAGS=""
+
+[ -n "${fstablocal}" ] && ADDFLAGS="${ADDFLAGS} fstablocal=${fstablocal}"
+[ -n "${customskel}" ] && ADDFLAGS="${ADDFLAGS} customskel=${customskel}"
+
+cbsd jcreate jconf=${workjconf} ${ADDFLAGS} removejconf=1 delpkglist=0
+
+# system dir
+if [ -d "${etcdir}/scenes/${jname}" ]; then
+	[ -d "${jailsysdir}/${jname}" ] && rm -rf "${jailsysdir}/${jname}"
+	cp -Rp ${etcdir}/scenes/${jname} ${jailsysdir}/${jname}
+fi
+
+if [ -f "${etcdir}/scenes/${jname}/${jname}-descr" ]; then
+	[ ! -d "${jailsysdir}/${jname}" ] && mkdir ${jailsysdir}/${jname}
+	cp ${etcdir}/scenes/${jname}/${jname}-descr ${jailsysdir}/${jname}/descr
+fi
+
+. ${jrcconf}
+
+#Overwrite skel files
+SKELDIR="${etcdir}/scenes/${jname}/skel"
+
+#test for zfs mounted & mount if not
+case $zfsfeat in
+	1)
+		. $zfstool
+		zfsmnt ${data}
+		[ $? -eq 2 ] && zfs mount "${ZPOOL}"
+		;;
+esac
+
+if [ -d "${SKELDIR}" ]; then
+	cp -rPf ${SKELDIR}/* ${data}/
+fi
+
+
+if [ -f "${etcdir}/scenes/${jname}/post-install" ]; then
+	cp ${etcdir}/scenes/${jname}/post-install ${data}/tmp
+	/usr/sbin/chroot ${data} sh /tmp/post-install
+fi

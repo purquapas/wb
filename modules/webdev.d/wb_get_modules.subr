@@ -1,0 +1,23 @@
+CATEGORY="php sys db"
+
+category_php_desc="PHP: Hypertext Preprocessor"
+category_db_desc="Database engine"
+
+# PHP AREA
+php_modules="mbstring redis session pgsql"
+
+php_mbstring_desc="multibyte string support"
+php_mbstring_version="5.5.7"
+
+php_redis_desc="This extension provides an API for communicating with Redis database"
+php_redis_version="2.2.4"
+
+
+# DB AREA
+db_modules="pgsql mariadb redis"
+
+db_pgsql_desc="PostgreSQL is a sophisticated Object-Relational DBMS"
+db_pgsql_version="9.3.2"
+
+db_redis_desc="Redis is an open source, advanced key-value store"
+db_redis_version="2.8.3"

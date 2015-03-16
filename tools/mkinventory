@@ -1,0 +1,70 @@
+#!/bin/sh
+#v9.2.2
+globalconf="${workdir}/cbsd.conf";
+MYDESC="Collect and store inventory information"
+MYARG="nodename"
+MYOPTARG=""
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+. ${tools}
+
+init ${1}
+
+collect_info()
+{
+	local _dmidecode _meminfo _realmem
+
+	_realmem=$( /sbin/sysctl -n hw.physmem 2>/dev/null )
+
+	if [ -n "${_realmem}" ]; then
+		physmem=$(( _realmem / 1048576 ))
+	else
+		physmem=0
+	fi
+
+	disks=$( /sbin/sysctl -n kern.disks 2>/dev/null|tr " " "," )
+
+	_dmidecode=$( which dmidecode )
+
+	if [ -n "${_dmidecode}" ]; then
+		memtype=$( ${_dmidecode} -t memory|grep -A20 "Memory Device" | grep -B20 "^Handle" | egrep "Type:|Speed:" |cut -d : -f 2 )
+	else
+		memtype=""
+	fi
+
+	hostname=$( /sbin/sysctl -n kern.hostname 2>/dev/null )
+	osrelease=$( /sbin/sysctl -n kern.osrelease 2>/dev/null )
+	cpumodel=$( /sbin/sysctl -n hw.model 2>/dev/null )
+	ncpu=$( /sbin/sysctl -n hw.ncpu 2>/dev/null )
+
+	cpufreq=$( /sbin/sysctl -n dev.cpu.0.freq 2>/dev/null )
+	kernhz=$( /sbin/sysctl -n kern.hz 2>/dev/null )
+	sched=$( /sbin/sysctl -n kern.sched.name 2>/dev/null )
+	eventtimer=$( /sbin/sysctl -n kern.eventtimer.choice 2>/dev/null )
+	disks=$( /sbin/sysctl -n kern.disks 2>/dev/null )
+
+	cbsdver=${myversion}
+
+	nics=$( ${miscdir}/nics-list -d -s "lo" )
+	[ -n "${nics}" ] && nics=$( echo ${nics}|/usr/bin/tr " " "," )
+
+	platform=$( /usr/bin/uname -s )
+}
+
+collect_info
+
+MYDATA="parallel nodename hostname nodeip nodedescr jnameserver nodeippool natip nat_enable fbsdrepo mdtmp repo workdir ipfw_enable fs zfsfeat jail_interface ncpu physmem memtype disks cpumodel cpufreq kernhz sched eventtimer nics"
+
+for i in ${MYDATA}; do
+	eval items="\$${i}"
+	if [ -n "${items}" ]; then
+		${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET ${i}=\"${items}\"
+		${SYSRC_CMD} -qf ${inventory} ${i}="${items}" > /dev/null
+	fi
+done
+
+# here is place for execute importing SQL data to Ascii file

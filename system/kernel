@@ -1,0 +1,2 @@
+#!/bin/sh
+cbsd buildkernel $* && cbsd installkernel $*

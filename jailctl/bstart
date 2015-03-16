@@ -1,0 +1,371 @@
+#!/usr/local/bin/cbsd
+#v10.1.2
+MYARG=""
+MYOPTARG="jname inter debug"
+MYDESC="Start jail"
+ADDHELP="inter=0 to prevent any questions and to accept answers by default\n"
+CBSDMODULE="bhyve"
+EXTHELP="wf_jstop_jstart.html"
+
+. ${subr}
+. ${system}
+. ${strings}
+. ${workdir}/universe.subr
+. ${workdir}/bhyve.subr
+. ${tools}
+
+readconf buildworld.conf
+readconf jail-freebsd-default.conf
+
+[ -z "${1}" ] && select_jail_by_list -s "List of offline VMs" -a "Off" -e bls -r ${sqlreplica}
+init $*
+
+. ${workdir}/fetch.subr
+
+init_grubcheck()
+{
+	grubcmd=$( /usr/bin/which grub-bhyve )
+	[ -z "${grubcmd}" ] && err 1 "${MAGENTA}Current version required for ${GREEN}grub-bhyve${MAGENTA}\nPlease ${GREEN}pkg install grub2-bhyve ${MAGENTA} or ${GREEN}make -C /usr/ports/sysutils/grub2-bhyve install${MAGENTA} it.${NORMAL}"
+}
+
+init_iso()
+{
+	[ -z "${iso_img}" ] && return 1
+	local _mydir="${srcdir}/iso"
+	local _myfile="${_mydir}/${iso_img}"
+	local i
+
+	[ ! -d "${_mydir}" -o ! -h "${_mydir}" ] && mkdir -p ${_mydir}
+
+	[ -z "${iso_img_dist}" ] && iso_img_dist="${iso_img}"
+
+	if [ ! -f "${_myfile}" -a ! -f "${_mydir}/${iso_img_dist}" -a "${fetch}" = "1" ]; then
+		[ -z "${iso_site}" ] && ${ECHO} "${MAGENTA}No such iso: ${GREEN}${_myfile}${MAGENTA} and ${GREEN}iso_site${MAGENTA} variable not found" && return 1
+		${ECHO} "${MAGENTA}No such iso: ${GREEN}${_myfile}${MAGENTA} in ${GREEN}${_mydir}${NORMAL}"
+		if getyesno "Shall i download it from: ${iso_site}?"; then
+			${ECHO} "${MAGENTA}Download to: ${GREEN}${_mydir}/${iso_img_dist}${NORMAL}"
+			for i in ${iso_site}; do
+				${ECHO} "${MAGENTA}Processing: ${GREEN}${i}${NORMAL}"
+				[ -s "${_mydir}/${iso_img_dist}" ] && continue # skip all other mirror when file exist
+				fetchme -o ${_mydir}/${iso_img_dist} -u ${i}${iso_img_dist}
+			done
+		fi
+	fi
+
+	[ ! -s "${_mydir}/${iso_img_dist}" -a ! -s "${_myfile}" ] && err 1 "${MAGENTA}No such ${GREEN}${iso_img_dist}${MAGENTA}. Try to download it manually and put into ${GREEN}${_mydir}${NORMAL}"
+
+	if [ -n "${iso_extract}" -a -f "${_mydir}/${iso_img_dist}" -a ! -f "${_myfile}" -a "${fetch}" = "1" ]; then
+		${ECHO} "${MAGENTA}Extracting...${NORMAL}"
+		set -o xtrace
+		cd ${_mydir}
+		${iso_extract} ${_mydir}/${iso_img_dist}
+		set +o xtrace
+	fi
+
+	[ ! -f "${_myfile}" ] && return 1
+
+	iso_img="${_myfile}"
+	return 0
+}
+
+create_from_jail()
+{
+	# from jail2iso mode
+	bhyveload_cmd="/usr/bin/lockf -s -t0 /tmp/bhyveload.${jname}.lock /usr/sbin/bhyveload -m ${vm_ram} -d ${data}/${MDFILE} ${jname}"
+	# installer_opt="-s 31:0,virtio-blk,${BOOTDISK}"
+}
+
+
+check_for_empty_hdd()
+{
+	local _err
+	[ "${vm_boot}" != "hdd" ] && return 0
+	# check for empty disk
+	_err=$( file -s ${data}/${MDFILE}| cut -d":" -f2|xargs)
+	if [ "${_err}" = "data" -o "${_err}" = "empty" ]; then
+		${ECHO} "${MAGENTA}Looks like ${GREEN}${data}/${MDFILE}${MAGENTA} is empty.${NORMAL}"
+		if getyesno "May be want to boot from CD?"; then
+			cd_boot_once=1
+			vm_boot="cd";
+		fi
+	fi
+}
+
+
+boot_from_grub()
+{
+	_devicemap="${jailsysdir}/${jname}/device.map"
+	# profile
+	readconf bhyve-${vm_os_type}-${vm_os_profile}.conf
+	[ -z "${bhyve_profile}" ] && err 1 "${MAGENTA}No such profile: ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
+	# re-read jail params and apply personal after profile
+	. ${jrcconf}
+
+	check_for_empty_hdd
+
+	[ "${vm_iso_path}" != "0" ] && iso_img="${vm_iso_path}"
+	if [ "${vm_boot}" = "cd" ]; then
+		init_iso
+		if [ $? -eq 1 ]; then
+			printf "${MAGENTA}Continue without ${iso_img}. Hope this is ok, sleep for 5 seconds ${NORMAL}"
+			for i in $( jot 5 ); do
+				printf "."
+				sleep 1
+			done
+			echo
+		fi
+	fi
+
+	${ECHO} "${MAGENTA}Creating ${GREEN}device.map ${MAGENTA}in ${GREEN}${_devicemap}${NORMAL}"
+	truncate -s0 ${_devicemap}
+	echo "(hd0) ${data}/${MDFILE}" >> "${_devicemap}"
+	echo "(cd0) ${iso_img}" >> "${_devicemap}"
+	cat "${_devicemap}"
+	[ -z "${grub_boot_cmd}" ] && err 1 "${MAGENTA}No such grub_boot_cmd variable. Check ${GREEN}vm_os_profile${MAGENTA} of config for ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${MAGENTA} in ${etcdir}${NORMAL}"
+	[ -z "${grub_iso_cmd}" -a "${vm_boot}" = "cd" ] && err 1 "${MAGENTA}No such grub_iso_cmd variable. Check ${GREEN}vm_os_profile${MANGETA} of config for ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf ${MAGENTA}in ${etcdir}${NORMAL}"
+}
+
+
+start_bhyve()
+{
+	local bhyveload_cmd _devicemap _err
+	local grubmem
+
+	grubmem=$(( vm_ram / 1024 / 1024 ))
+
+	# flags which means that the CD as boot device will use only once
+	cd_boot_once=0
+
+	# profile
+	readconf bhyve-${vm_os_type}-${vm_os_profile}.conf
+	if [ -z "${bhyve_profile}" ]; then
+		${ECHO} "${MAGENTA}No such profile: ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
+		sleep 2
+	fi
+	# re-read jail params and apply personal after profile
+	. ${jrcconf}
+
+	vm_boot=$( cbsdsql local SELECT vm_boot FROM bhyve WHERE jname=\"${jname}\" 2>/dev/null )
+
+	case "${vm_os_type}" in
+		"freebsd")
+			if [ "${from_jail}" = "1" ]; then
+				create_from_jail
+			else
+				if [ "${boot_from_grub}" = "1" ]; then
+					boot_from_grub
+				else
+					# default mode
+					[ "${vm_iso_path}" != "0" ] && iso_img="${vm_iso_path}"
+					check_for_empty_hdd
+					if [ "${vm_boot}" = "cd" ]; then
+						init_iso
+						if [ $? -eq 1 ]; then
+							printf "${MAGENTA}Continue without ${iso_img}. Hope this is ok, sleep for 5 seconds ${NORMAL}"
+							for i in $( jot 5 ); do
+								printf "."
+								sleep 1
+							done
+							echo
+						fi
+					fi
+
+					if [ "${vm_boot}" = "cd" ]; then
+						bhyveload_cmd="/usr/bin/lockf -s -t0 /tmp/bhyveload.${jname}.lock /usr/sbin/bhyveload -d ${iso_img} -m ${vm_ram} ${jname}"
+						bhyveload_cmd_once="/usr/bin/lockf -s -t0 /tmp/bhyveload.${jname}.lock /usr/sbin/bhyveload -m ${vm_ram} -d ${data}/${MDFILE} ${jname}"
+					else
+						bhyveload_cmd="/usr/bin/lockf -s -t0 /tmp/bhyveload.${jname}.lock /usr/sbin/bhyveload -m ${vm_ram} -d ${data}/${MDFILE} ${jname}"
+					fi
+
+#					echo "DEBUG: $bhyveload_cmd"
+#					${tmuxcmd} -2 new -d -s "cbsd-${jname}" "eval $bhyveload_cmd"
+				fi
+			fi
+			;;
+		"linux")
+			_devicemap="${jailsysdir}/${jname}/device.map"
+			# profile
+			readconf bhyve-${vm_os_type}-${vm_os_profile}.conf
+			[ -z "${bhyve_profile}" ] && err 1 "${MAGENTA}No such profile: ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
+			# re-read jail params and apply personal after profile 
+			. ${jrcconf}
+			check_for_empty_hdd
+			[ "${vm_iso_path}" != "0" ] && iso_img="${vm_iso_path}"
+			if [ "${vm_boot}" = "cd" ]; then
+				init_iso
+				if [ $? -eq 1 ]; then
+					printf "${MAGENTA}Continue without ${iso_img}. Hope this is ok, sleep for 5 seconds ${NORMAL}"
+					for i in $( jot 5 ); do
+						printf "."
+						sleep 1
+					done
+					echo
+				fi
+			fi
+			${ECHO} "${MAGENTA}Creating ${GREEN}device.map ${MAGENTA}in ${GREEN}${_devicemap}${NORMAL}"
+			truncate -s0 ${_devicemap}
+			echo "(hd0) ${data}/${MDFILE}" >> "${_devicemap}"
+			echo "(cd0) ${iso_img}" >> "${_devicemap}"
+			cat "${_devicemap}"
+			[ -z "${grub_boot_cmd}" ] && err 1 "${MAGENTA}No such grub_boot_cmd variable. Check ${GREEN}vm_os_profile${MAGENTA} of config for ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${MAGENTA} in ${etcdir}${NORMAL}"
+			[ -z "${grub_iso_cmd}" -a "${vm_boot}" = "cd" ] && err 1 "${MAGENTA}No such grub_iso_cmd variable. Check ${GREEN}vm_os_profile${MANGETA} of config for ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf ${MAGENTA}in ${etcdir}${NORMAL}"
+			;;
+		openbsd|dflybsd|netbsd)
+			_devicemap="${jailsysdir}/${jname}/device.map"
+			# profile
+			readconf bhyve-${vm_os_type}-${vm_os_profile}.conf
+			[ -z "${bhyve_profile}" ] && err 1 "${MAGENTA}No such profile: ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
+			# re-read jail params and apply personal after profile
+			. ${jrcconf}
+			init_iso
+			if [ $? -eq 1 ]; then
+				printf "${MAGENTA}Continue without ${iso_img}. Hope this is ok, sleep for 5 seconds ${NORMAL}"
+				for i in $( jot 5 ); do
+					printf "."
+					sleep 1
+				done
+				echo
+			fi
+			_err=$( file -s ${data}/${MDFILE}| cut -d":" -f2|xargs )
+
+			if [ "${_err}" = "data" -a "${vm_boot}" = "hdd" ]; then
+				${ECHO} "${MAGENTA}Looks like ${GREEN}${data}/${MDFILE}${MAGENTA} is empty.${NORMAL}"
+				if getyesno "May be want to boot from CD?"; then
+					vm_boot="cd";
+				fi
+			fi
+
+			${ECHO} "${MAGENTA}Creating ${GREEN}device.map ${MAGENTA}in ${GREEN}${_devicemap}${NORMAL}"
+			truncate -s0 ${_devicemap}
+			echo "(hd0) ${data}/${MDFILE}" >> "${_devicemap}"
+			echo "(cd0) ${iso_img}" >> "${_devicemap}"
+			cat "${_devicemap}"
+			[ -z "${grub_boot_cmd}" ] && err 1 "${MAGENTA}No such grub_boot_cmd variable. Check ${GREEN}vm_os_profile${MAGENTA} of config for ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${MAGENTA} in ${etcdir}${NORMAL}"
+			[ -z "${grub_iso_cmd}" -a "${vm_boot}" = "cd" ] && err 1 "${MAGENTA}No such grub_iso_cmd variable. Check ${GREEN}vm_os_profile${MANGETA} of config for ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf ${MAGENTA}in ${etcdir}${NORMAL}"
+			;;
+		*)
+			err 1 "${MAGENTA}Unknown vm profile: ${GREEN}${vm_os_type}${NORMAL}"
+	esac
+
+	# for vnet we can make another action
+	. ${vimageconf}
+
+	#unset zero-value
+	[ "${bhyve_flags}" = "0" ] && unset bhyve_flags
+	[ "${vm_os_profile}" = "0" ] && unset vm_os_profile
+
+	# init hostbridge_args
+	if ! compile_hostbridge_args; then
+		${ECHO} "${MAGENTA}No such hostbridge for VMs: ${GREEN}${jname}${NORMAL}"
+		unset hostbridge_args
+	fi
+
+	# init lpc_args
+	if ! compile_lpc_args; then
+		${ECHO} "${MAGENTA}No such lpc for VMs: ${GREEN}${jname}${NORMAL}"
+		unset lpc_args
+	fi
+
+	# init virtiornd_args
+	if ! compile_virtiornd_args; then
+		${ECHO} "${MAGENTA}No such rnd for VMs: ${GREEN}${jname}${NORMAL}"
+		unset lpc_args
+	fi
+
+	# init nic_args
+	if ! compile_nic_args ; then
+		${ECHO} "${MAGENTA}No such nic for VMs: ${GREEN}${jname}${NORMAL}"
+		unset nic_args
+	fi
+
+	# init dsk_args
+	if ! compile_dsk_args; then
+		${ECHO} "${MAGENTA}No such disk for VMs: ${GREEN}${jname}${NORMAL}"
+		unset dsk_args
+	fi
+
+	# init cd_args
+	if ! compile_cd_args; then
+		unset cd_args
+	fi
+
+	# Poehali!
+	passthr=""
+#	passthr="-s 1:0,hcd-uhci"
+#	passthr="-s 3:0,ehci"
+#	passthr="-s 3:0,ehci,1"
+
+
+cat > ${jailsysdir}/${jname}/bhyve.conf <<EOF
+boot_from_grub='${boot_from_grub}'
+vm_boot='${vm_boot}'
+grub_iso_cmd='${grub_iso_cmd}'
+grub_boot_cmd='${grub_boot_cmd}'
+bhyveload_cmd='${bhyveload_cmd}'
+tmuxcmd='${tmuxcmd}'
+jname='${jname}'
+
+bhyve_flags='${bhyve_flags}'
+vm_cpus='${vm_cpus}'
+vm_ram='${vm_ram}'
+hostbridge_args='${hostbridge_args}'
+passthr='${passthr}'
+lpc_args='${lpc_args}'
+virtiornd_args='${virtiornd_args}'
+nic_args='${nic_args}'
+dsk_args='${dsk_args}'
+cd_args='${cd_args}'
+mytap='${mytap}'
+cd_boot_once='${cd_boot_once}'
+bhyveload_cmd_once='${bhyveload_cmd_once}'
+EOF
+
+	${tmuxcmd} -2 -u new -d -s "cbsd-${jname}" "/bin/sh ${sharedir}/bhyverun.sh ${jailsysdir}/${jname}/bhyve.conf"
+	err 0 "${MAGENTA}Use ${GREEN}cbsd blogin ${jname}${MAGENTA} for attach to console${NORMAL}"
+}
+
+
+# MAIN for multiple jails
+TRAP=""
+
+if [ $# -gt 1 -a -z "${jname}" ]; then
+	# multiple astart always non interactive
+	export inter=0
+	# recursive
+	JLIST=$*
+	for jname in ${JLIST}; do
+		[ "${jname}" = "inter=0" ] && continue
+		TRAP="${TRAP} rm -f ${ftmpdir}/jstart.${jname}.$$;"
+		trap "${TRAP}" HUP INT ABRT BUS TERM EXIT
+		/usr/sbin/daemon -p ${ftmpdir}/jstart.${jname}.$$ /usr/local/bin/cbsd bstart inter=${inter} jname=${jname}
+		#lets save .pid file
+		sleep 1
+		[ -f "${ftmpdir}/bstart.${jname}.$$" ] && cbsd_pwait --pid=$( /bin/cat ${ftmpdir}/bstart.${jname}.$$ ) --timeout=${parallel}
+		trap "" HUP INT ABRT BUS TERM EXIT
+		# Artificial delay to create a sequence (for order compliance)
+		# todo: determine VM complete starting
+		sleep 12
+	done
+
+	wait_for_fpid start ${parallel}
+	err 0 "${MAGENTA}Multiple jstart: ${GREEN}done${NORMAL}"
+fi
+
+
+# MAIN
+init_bhyve
+
+[ -z "$jname" ] && jname=$1
+. ${jrcconf}
+[ $? -eq 1 ] && err 1 "${MAGENTA}No such jail: ${GREEN}${jname}${NORMAL}"
+[ ${status} -eq 2 ] && err 1 "${MAGENTA}Jail in slave mode. Please ${GREEN}cbsd jswmode mode=master${MAGENTA} first${NORMAL}"
+[ $jid -ne 0 ] && err 1 "${MAGENTA}Jail ${jname} already running, jid: ${GREEN}${jid}${NORMAL}"
+[ "${emulator}" != "bhyve" ] && err 1 "${MAGENTA}Not bhyve mode${NORMAL}"
+[ -z "${vm_ram}" -o -z "${vm_cpus}" -o -z "${vm_os_type}" ] && err 1 "${MAGENTA}Parameter is mandatory: ${GREEN}vm_ram, vm_cpus, vm_os_type${NORMAL}"
+[ "${vm_os_type}" != "freebsd" ] && init_grubcheck
+# hardcoded first disk path from SQL. Todo: mark bootable disk(s)
+MDFILE=$( cbsdsql local SELECT dsk_path FROM bhyvedsk WHERE jname=\"${jname}\" AND dsk_type=\"vhd\" LIMIT 1 2>/dev/null )
+[ ! -f "${data}/${MDFILE}" ] && ${ECHO} "${MAGENTA}No such ${data}/${MDFILE} but mdsize flags is not null. Skip${NORMAL}" && continue
+[ "${emulator}" = "bhyve" ] && start_bhyve
+
+exit 0

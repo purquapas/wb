@@ -1,0 +1,128 @@
+#!/bin/sh
+#v10.0.3
+globalconf="${workdir}/cbsd.conf";
+CBSDMODULE="build"
+MYARG=""
+MYOPTARG="ver arch target_arch maxjobs clean name basename ccache notify stable emulator"
+MYDESC="Build kernel from sources"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+init $*
+
+over="${ver}"
+oarch="${arch}"
+
+[ -z "${NICE}" ] && NICE="0"
+
+. ${buildconf}
+. ${distccacheconf}
+. ${mailconf}
+readconf buildworld.conf
+. ${system}
+. ${workdir}/universe.subr
+. ${workdir}/emulator.subr
+readconf srcup.conf
+
+init_distcc
+init_notify
+init_target_arch
+init_srcdir
+init_supported_arch
+
+[ -z "${emulator}" ] && emulator="0"
+init_usermode_emul
+
+if [ "${ccache}" = "1"  ]; then
+	ccache_prefix="cbsd buildworld ${ver} ${arch} ${target_arch} ${basename}"
+	ccache_dir="/var/cache/ccache"
+	init_ccache_dir
+	export CCACHE_DIR=${ccache_realdir}
+
+	if ! ccache_check; then
+		ccache=0
+	fi
+else
+	ccache=0
+fi
+
+init_basedir
+init_make_flags
+
+LOCKFILE=${ftmpdir}/$( /sbin/md5 -qs ${MAKEOBJDIRPREFIX} ).lock
+
+[ -z "${name}" ] && name="GENERIC"
+
+kernel_conf="${platform}-kernel-${name}-${arch}-${ver}"
+
+if [ -f "${etcdir}/${kernel_conf}" ]; then
+	kernel_conf_path="${etcdir}/${kernel_conf}"
+else
+	kernel_conf_path="${etcdir}/defaults/${kernel_conf}"
+fi
+
+[ ! -f "${kernel_conf_path}" ] && err 1 "${MAGENTA}No such config ${kernel_conf_path} in: ${GREEN}${etcdir}${NORMAL}"
+
+## preparing chroot
+TMPDST="${basejaildir}/tempbase.$$"
+/bin/mkdir -p ${TMPDST}
+
+[ $notify -eq 1 ] && BLDLOG="${tmpdir}/build.$$.log"
+
+case "${platform}" in
+	"DragonFly")
+		DESTCONF="${SRC_DIR}/sys/config/${name}.CBSD"
+		;;
+	*)
+		DESTCONF="${SRC_DIR}/sys/${arch}/conf/${name}.CBSD"
+		;;
+esac
+
+makelock $LOCKFILE "/bin/rm -f ${DESTCONF} && /sbin/umount -f ${TMPDST}${MAKEOBJDIRPREFIX} && /sbin/umount -f ${TMPDST}/dev && /sbin/umount -f ${TMPDST}/usr/src && ${CHFLAGS_CMD} -R noschg ${TMPDST} && /bin/rm -rf ${TMPDST} && /bin/rm -f ${BLDLOG}"
+
+baserw=1
+populate_cdir ${BASE_DIR} ${TMPDST}
+cp ${kernel_conf_path} ${DESTCONF}
+
+# place for rewrite to mountbase from system.subr
+mkdir -p ${TMPDST}/usr/src
+${MOUNT_NULL_CMD} -o ro ${SRC_DIR} ${TMPDST}/usr/src
+mkdir -p ${MAKEOBJDIRPREFIX} ${TMPDST}${MAKEOBJDIRPREFIX}
+mkdir -p ${TMPDST}${etcdir}
+[ -f "${__MAKE_CONF}" ] && cp ${__MAKE_CONF} ${TMPDST}${etcdir}
+[ -f "${SRCCONF}" ] && cp ${SRCCONF} ${TMPDST}${etcdir}
+${MOUNT_NULL_CMD} ${MAKEOBJDIRPREFIX} ${TMPDST}${MAKEOBJDIRPREFIX}
+mount -t devfs devfs ${TMPDST}/dev
+#
+
+DT_START=$( date +%s )
+
+if [ $notify -eq 1 ]; then
+	[ -z "$TAILSTRING" ] && TAILSTRING=50
+	script ${BLDLOG} /usr/bin/nice -n ${NICE} /usr/sbin/chroot ${TMPDST} /usr/bin/make $NUMJOBS -C /usr/src buildkernel KERNCONF=${name}.CBSD ${NOCLEANUP} TARGET=${arch} TARGET_ARCH="${target_arch}"
+	res=$?
+else
+	/usr/sbin/chroot ${TMPDST} /usr/bin/nice -n ${NICE} /usr/bin/make $NUMJOBS -C /usr/src buildkernel KERNCONF=${name}.CBSD ${NOCLEANUP} TARGET=${arch} TARGET_ARCH="${target_arch}"
+	res=$?
+fi
+
+DT_END=$( date +%s )
+
+init_scm_and_version
+
+if [ $res -ne 0 ]; then
+	[ $notify -eq 1 ] && send_notification -s "[CBSD ${nodename}] buildkernel ${name} $basename $ver $arch ${target_arch} r${svnrev} failed." -b "`tail -n${TAILSTRING} ${BLDLOG}`"
+	exit 1
+fi
+
+if [ $res -eq 0 -a $notify -eq 1 ]; then
+	cat > ${BLDLOG} << EOF
+Start time: `date -r ${DT_START}`
+End time: `date -r ${DT_END}`
+EOF
+	send_notification -s "[CBSD ${nodename}] buildkernel ${name} $basename $ver $arch ${target_arch} r${svnrev} complete." -f ${BLDLOG}
+	return 0
+fi

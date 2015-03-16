@@ -1,0 +1,65 @@
+#!/usr/local/bin/cbsd
+globalconf="${workdir}/cbsd.conf";
+
+if [ ! -f "${globalconf}" ]; then
+	echo "no globalconf file"
+	exit 1
+fi
+
+. ${globalconf}
+. ${subr}
+. ${strings}
+
+jails_stop() {
+	local localjails= localvms=
+
+	localjails="$( jorder order=DESC )"
+	localvms="$( border order=DESC )"
+
+	for jname in ${localjails} ${localvms}; do
+		. ${jrcconf}
+		[ ${jid} -eq 0 ] && continue
+		stoppid="${ftmpdir}/stop.${jname}.$$"
+		if [ "${emulator}" = "bhyve" ]; then
+			$ECHO "${MAGENTA}Auto-stop jail: ${GREEN}${jname}${NORMAL}"
+			env TERM=xterm /usr/sbin/daemon -p ${stoppid} bstop jname=${jname}
+		else
+			/usr/sbin/daemon -p ${stoppid} jstop jname=${jname}
+		fi
+		# lets save .pid file
+		sleep 1
+		if [ -f "${stoppid}" ]; then
+			PID=$(cat ${stoppid} 2>/dev/null)
+			[ -n "${PID}" ] && cbsd_pwait --pid=$(cat ${stoppid}) --timeout=${parallel}
+		fi
+	done
+	wait_for_fpid stop
+}
+
+jails_start() {
+	local jlist
+	local blist
+	local localjails= localvms=
+
+	localjails="$( jorder order=ASC )"
+	localvms="$( border order=ASC )"
+
+	for jname in ${localjails} ${localvms}; do
+		. ${jrcconf}
+		[ ${astart} -ne 1 ] && continue
+		if [ "${emulator}" = "bhyve" ]; then
+			blist="${blist} ${jname}"
+		else
+			jlist="${jlist} ${jname}"
+		fi
+	done
+
+	[ -n "${jlist}" ] && task mode=new notify=0 owner=syscbsd cbsd jstart inter=0 ${jlist}
+	[ -n "${blist}" ] && task mode=new notify=0 owner=syscbsd cbsd bstart inter=0 ${blist}
+}
+
+#### MAIN ####
+case $1 in
+	start) jails_start ;;
+	stop) jails_stop ;;
+esac

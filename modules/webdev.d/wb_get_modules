@@ -1,0 +1,23 @@
+#!/bin/sh
+#v10.0.0
+globalconf="${workdir}/cbsd.conf";
+CBSDMODULE="webdev"
+MYARG="cat"
+MYOPTARG="mode"
+MYDESC="Return available modules for WebDev. From local system and remote repository"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+init $*
+
+#defines
+_MYDIR=$(dirname `realpath $0`)
+
+### MAIN Route ###
+set -e
+	. ${_MYDIR}/wb_get_modules.subr
+set +e
+

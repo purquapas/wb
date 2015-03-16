@@ -1,0 +1,54 @@
+#!/bin/sh
+#v10.0.3
+globalconf="${workdir}/cbsd.conf";
+CBSDMODULE="build"
+MYARG=""
+MYOPTARG="ver arch target_arch basename stable destdir"
+MYDESC="Installbase from obj"
+ADDHELP="ver=head for current.\n\
+stable=1 for RELENG_X\n\
+destdir= for alternative install path in root dir\n"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+readconf buildworld.conf
+. ${workdir}/universe.subr
+init $*
+
+over="${ver}"
+oarch="${arch}"
+
+# By default ver=current version
+. ${buildconf}
+
+init_distcc
+init_notify
+init_target_arch
+init_srcdir
+init_supported_arch
+init_basedir
+
+
+#TARGET_ARCH="${target_arch}"
+
+[ ! -d "${BASE_DIR}" ] && /bin/mkdir -p ${BASE_DIR}
+LOCKFILE=${ftmpdir}/$( /sbin/md5 -qs ${MAKEOBJDIRPREFIX} ).lock
+makelock $LOCKFILE
+
+#  work-around for:
+# rm -rf /tmp/install.PazxMxWt
+# make[2]: "/usr/jails/src/src_11/src/share/mk/bsd.compiler.mk" line 37: Unable to determine compiler type for cc.  Consider setting COMPILER_TYPE.
+# *** Error code 1
+[ "$arch" = "arm" ] && export COMPILER_TYPE="clang"
+
+#/usr/bin/make -C ${SRC_DIR} installworld distribution DESTDIR=${BASE_DIR} TARGET=${arch} TARGET_ARCH=${target_arch}
+/usr/bin/make -C ${SRC_DIR} installworld DESTDIR=${BASE_DIR} TARGET=${arch} TARGET_ARCH=${target_arch}
+/usr/bin/make -C ${SRC_DIR}/etc distribution DESTDIR=${BASE_DIR} TARGET=${arch} TARGET_ARCH=${target_arch}
+
+#/usr/bin/make -C ${SRC_DIR} installworld distribution DESTDIR=${BASE_DIR}
+
+[ $? -ne 0 ] && err 1 "${MAGENTA}Installworld error${NORMAL}"
+cbsd preparebase dst=${BASE_DIR} emulator=${emulator}

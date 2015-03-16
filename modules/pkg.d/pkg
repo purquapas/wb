@@ -1,0 +1,126 @@
+#!/bin/sh
+# fetch http://pkgmir.pkg.freebsd.org/freebsd:11:x86:64/latest/packagesite.txz
+#v10.0.3
+globalconf="${workdir}/cbsd.conf"
+CBSDMODULE="helpers"
+MYARG="mode"
+MYOPTARG="jname pkglist name repodir pkgconf chroot nomount"
+MYDESC="cbsd pkg wrapper"
+ADDHELP="jname= work in with jail\n\
+pkglist= use package list from file\n\
+name= name of pkg\n\
+repodir= repository configuration directory\n\
+pkgconf= specify pkg.conf to use for pkg\n\
+nomount=1 do not mount/unmount jail fs\n\
+mode=add,bootstrap,install,info,query,remove,update,upgrade\n"
+EXTHELP="modules/pkg.d.html"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+. ${strings}
+. ${system}
+init $*
+
+#defines
+_MYDIR=$( dirname `realpath $0` )
+noname=0
+
+set -e
+	. ${_MYDIR}/pkg.subr
+set +e
+
+[ -n "${mode}" ] && shift
+if [ -n "${nomount}" ]; then
+	shift
+	nomount=${nomount}
+else
+	nomount=0
+fi
+
+PKGARGS=""
+TRAP=""
+# for chroot/jail env
+PKG_PRE=""
+
+if [ -n "${jname}" ]; then
+	. ${jrcconf}
+	[ $? -eq 1 ] && err 1 "${MAGENTA}No such jail: ${GREEN}${jname}${NORMAL}"
+	[ $baserw -eq 1 ] && path=$data
+
+	if [ ${jid} -eq 0 ]; then
+		. ${workdir}/universe.subr
+		readconf buildworld.conf
+		init_target_arch
+		init_srcdir
+		init_basedir
+		init_kerneldir
+		[ ${nomount} -eq 0 ] && prepare_jail
+	fi
+	
+	if [ "${emulator}" != "0" -a -n "${emulator}" -a "${emulator}" != "bhyve" ]; then
+		. ${workdir}/emulator.subr
+		init_usermode_emul
+		CHROOT_EXEC="/usr/sbin/chroot ${path} /bin/${emulator}"
+	else
+		CHROOT_EXEC="/usr/sbin/chroot ${path}"
+	fi
+
+	PKG_PRE="${CHROOT_EXEC}"
+	shift
+else
+	path=""
+fi
+
+if [ -n "${pkglist}" ]; then
+	[ ! -s "${pkglist}" ] && err 1 "${MAGENTA}No such file or file is empty: ${GREEN}${pkglist}${NORMAL}"
+	pkgtarget=$( /bin/cat ${pkglist} |/usr/bin/xargs )
+else
+	pkgtarget="$*"
+fi
+
+# init path and bootstrap pkg if necessary
+init_path
+
+[ -n "${repodir}" ] && PKGARGS="${PKGARGS} -R ${repodir}"
+[ -n "${chroot}" ] && PKGARGS="${PKGARGS} -c ${chroot}"
+
+res=0
+
+case "${mode}" in
+	bootstrap)
+		[ -z "${jname}" ] && err 1 "${MAGENTA}bootstrap for jail only${NORMAL}"
+		pkg_bootstrap
+		res=$?
+		;;
+	install|add)
+		pkg_install "${pkgtarget}"
+		res=$?
+		;;
+	"remove")
+		pkg_remove "${pkgtarget}"
+		res=$?
+		;;
+	"info")
+		pkg_info "${pkgtarget}"
+		res=$?
+		;;
+	"query")
+		pkg_query "${pkgtarget}"
+		res=$?
+		;;
+	"update")
+		pkg_update "${pkgtarget}"
+		res=$?
+		;;
+	"upgrade")
+		pkg_upgrade "${pkgtarget}"
+		res=$?
+		;;
+	*)
+		err 1 "${MAGENTA}Unknown mode${NORMAL}"
+esac
+
+exit ${res}

@@ -1,0 +1,21 @@
+#!/bin/sh
+#v9.2.2
+globalconf="${workdir}/cbsd.conf";
+MYARG=""
+MYOPTARG=""
+MYDESC="Enable NAT service for RFC1918 Networks"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+. ${tools}
+. ${initenv}
+init $*
+
+if getyesno "Configure NAT for RFC1918 Network?"; then
+	configure_nat
+	#Update inventory
+	env sqlcolnames="1" ${miscdir}/sqlcli ${dbdir}/local.sqlite "SELECT * FROM local" > ${inventory}
+fi

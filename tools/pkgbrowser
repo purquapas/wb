@@ -1,0 +1,273 @@
+#!/usr/local/bin/cbsd
+#v10.1.2
+globalconf="${workdir}/cbsd.conf";
+MYARG=""
+MYOPTARG="controlmaster out repo conf"
+MYDESC="Generate choosen package list from repository"
+ADDHELP="out=path_to_file with result, instead of random\n\
+repo= use this repository\n\
+conf= use this pkg.conf\n"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+. ${tools}
+. ${dialog}
+init $*
+
+f_dialog_title "$msg_system_console_configuration"
+f_dialog_backtitle "${ipgm:+bsdconfig }$pgm"
+f_mustberoot_init
+
+readconf pkgbrowser.conf
+
+input_manual()
+{
+	local _input
+	local msg="Enter space-separated name or origin for packages.\n E.g: 'www/nginx www/apache24 lang/php56 misc/mc ftp/wget shells/bash'"
+
+	f_dialog_title " pkglist "
+
+	f_dialog_input _input "${msg}" "${ver}" \
+		"${_message}" || return $?
+
+	pkglist="${_input}"
+}
+
+populate_menu_by_category()
+{
+	cat_id="${1}"
+	shift
+	cat_name="${1}"
+	shift
+	[ -z "${cat_id}" -o -z "${cat_name}" ] && return 1
+
+	local _tmpdir="${tmpdir}/pkg"
+	[ ! -d "${_tmpdir}" ] && mkdir "${_tmpdir}"
+
+	[ -f "${_tmpdir}/${cat_name}.mnu" -a ${UPDATED} -eq 0 ] && return 0
+
+	echo 'menu_list="' > ${_tmpdir}/${cat_name}.mnu
+	echo "'EXIT'	'EXIT'	'Exit this menu'" >> ${_tmpdir}/${cat_name}.mnu
+
+	/usr/bin/truncate -s0 ${_tmpdir}/${cat_name}.idx
+	/bin/rm -f ${_tmpdir}/${cat_name}.idx.gz
+
+	f_dialog_title " Repo updated "
+	f_dialog_info "Re-index and dialogizing for ${cat_name}..."
+
+	local sqldelimer="|"
+	local IFS="|"
+
+	local i=0
+
+	local prefix=X
+	local cur_prefix=Y
+
+	cbsdsql /var/db/pkg/${repofile} "SELECT name,origin,comment,flatsize FROM packages WHERE id IN ( SELECT package_id FROM pkg_categories WHERE category_id=\"${cat_id}\" ) AND id IN ( SELECT packages.id FROM packages LEFT JOIN deps ON packages.origin = deps.origin WHERE deps.origin IS NULL ) ORDER BY name" |while read name origin comment flatsize; do
+		prefix=$( substr --pos=0 --len=1 --str=${name} )
+
+		if [ "${prefix}" != "${cur_prefix}" ]; then
+			cur_prefix="${prefix}"
+		else
+			prefix=""
+		fi
+
+		comment=$( echo "${comment}" |/usr/bin/tr -d "\"()'\`" )
+		markname=$( echo "${name}" |/usr/bin/tr -d "\"()'\`-.+" )
+
+		if conv2human "$flatsize"; then
+			flatsize=${convval}
+		fi
+
+		echo "export pkgmark_${markname}_origin='${origin}'" >> ${_tmpdir}/${cat_name}.idx
+		echo "'${prefix} ${name}'	'[\$pkgmark_${markname}] ${origin}'	'${comment}. Size: ${flatsize}'" >> ${_tmpdir}/${cat_name}.mnu
+
+	done
+
+	/usr/bin/gzip -9 ${_tmpdir}/${cat_name}.idx
+	echo '"' >> ${_tmpdir}/${cat_name}.mnu
+}
+
+browse_category()
+{
+	local title=" ${repofile} "
+	local btitle="Select packages"
+	local prompt=""
+	local defaultitem=
+	local hline="Hit ENTER for SELECT"
+	local prompt=" Choose category and select packages.\nSelected: ${pkgnum} "
+	local kversion
+
+	local f_dialog_title=" FreeBSD repository "
+
+	local menu_list=" \
+		'EXIT'		'<<'			'Exit this menu' \
+		'MANUAL'	'Input manually'	'Enter origin or package name by hand in inputbox' \
+		'-'	'-'	'' \
+	" # END-QUOTE
+
+	local num=0
+
+	local sqldelimer="|"
+	local IFS="|"
+
+	eval $( cbsdsql /var/db/pkg/${repofile} 'SELECT id,name FROM categories ORDER BY name'| while read id name; do
+			echo "local id_${num}=\"${id}\""
+			echo "local name_${num}=\"${name}\""
+			num=$(( num + 1 ))
+	done )
+
+	unset IFS
+	unset sqldelimer
+
+	for num in $( seq 0 200 ); do
+		eval id="\$id_${num}"
+		[ -z "${id}" ] && break
+		eval name="\$name_${num}"
+		[ -z "${name}" ] && break;
+		skip=0
+
+		# strict list by pkgbrowser.conf
+		for i in ${IGNORE_CATEGORY}; do
+			[ "${name}" = "${i}" ] && skip=1 && break
+		done
+
+		[ ${skip} -eq 1 ] && continue
+
+		populate_menu_by_category ${id} ${name}
+		menu_list="${menu_list} '${name}'	''	''"
+	done
+
+	IFS=" "
+
+	local height width rows
+	eval f_dialog_menu_with_help_size height width rows \
+		\"\$title\"  \
+		\"\$btitle\" \
+		\"\$prompt\" \
+		\"\$hline\"  \
+		$menu_list
+
+	# Obtain default-item from previously stored selection
+	f_dialog_default_fetch defaultitem
+
+	local menu_choice
+	menu_choice=$( eval $DIALOG \
+		--clear                                 \
+		--title \"\$title\"                     \
+		--backtitle \"\$btitle\"                \
+		--hline \"\$hline\"                     \
+		--item-help                             \
+		--ok-label \"\Choose\"                  \
+		--cancel-label \"Cancel\"               \
+		${USE_XDIALOG:+--help \"\"}             \
+		--default-item \"\$defaultitem\"        \
+		--menu \"\$prompt\"                     \
+		$height $width $rows                    \
+		$menu_list                              \
+		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
+	)
+
+	local retval=$?
+	f_dialog_data_sanitize menu_choice
+	f_dialog_menutag_store "$menu_choice"
+
+	# Only update default-item on success
+	[ $retval -eq $DIALOG_OK ] && f_dialog_default_store "$menu_choice"
+
+	return $retval
+}
+
+
+### MAIN ###
+[ -z "${out}" ] && out="${tmpdir}/pkgbrowser.$$"
+PKGCONF=""
+PKGOPT=""
+PKG_MODIFIED="${tmpdir}/pkg_updated.txt"
+UPDATED="0"
+
+# controlmaster for submenu
+CONTROLMASTER=$( /usr/bin/mktemp )
+/usr/bin/touch ${CONTROLMASTER}
+
+trap "/bin/rm -f ${CONTROLMASTER}" HUP INT ABRT BUS TERM EXIT
+
+f_dialog_info "Executing pkg update..."
+
+#printf "${MAGENTA}Update local copy of repository catalogues...${NORMAL}"
+tst=$( ${PKG_CMD} update 2>&1 )
+[ $? -ne 0 ] && err 1 "${MAGENTA}pkg update failed: ${NORMAL}${tst}"
+
+allrepos=$( /usr/bin/find /var/db/pkg/ -type f -depth 1 -maxdepth 1 -name repo-\*.sqlite -exec /sbin/md5 -qs {} \; | /usr/bin/xargs)
+tst=$( /sbin/md5 -qs "${allrepos}" )
+
+if [ -f "${PKG_MODIFIED}" ]; then
+	oldmd5=$( /bin/cat ${PKG_MODIFIED})
+	if [ "${oldmd5}" != "${tst}" ]; then
+		UPDATED="1"
+		echo "${tst}" > ${PKG_MODIFIED}
+	fi
+else
+	echo "${tst}" > ${PKG_MODIFIED}
+	UPDATED="1"
+fi
+
+REPOFILE="repo"
+
+pkgnum=0
+
+while :; do
+
+	# calculate num of selected pkg. pkglist variable from input_manual method is preferred.
+	if [ -z "${pkglist}" ]; then
+		pkgnum=$( /usr/bin/egrep -v '(pkgmark_)*(_origin=)' ${CONTROLMASTER} |/usr/bin/wc -l |/usr/bin/awk '{printf $1}' )
+	else
+		pkgnum=$( echo $pkglist |/usr/bin/wc -w| /usr/bin/awk '{printf $1}' )
+	fi
+
+	browse_category || break
+	UPDATED=0
+	f_dialog_menutag_fetch mtag
+
+	[ -z "${mtag}" ] && exit $SUCCESS
+
+	case "$mtag" in
+		"EXIT")
+			. ${CONTROLMASTER}
+			if [ -z "${controlmaster}" ]; then
+				controlmaster="/dev/stdout"
+			else
+				/usr/bin/truncate -s0 ${controlmaster}
+			fi
+
+			# store selected pkg. pkglist variable from input_manual method is preferred
+			if [ -z "${pkglist}" ]; then
+				for i in $( printenv |/usr/bin/egrep '(pkgmark_)*(_origin=)' |/usr/bin/cut -d "=" -f 2 ); do
+					printf "${i} " >> ${controlmaster}
+				done
+			else
+				printf "${pkglist}" >> ${controlmaster}
+			fi
+			f_die
+			;;
+		"MANUAL")
+			input_manual
+			;;
+		"-")
+			continue
+			;;
+		*)
+			pkgbrowsecat name="${mtag}" controlmaster="${CONTROLMASTER}"
+			continue
+			;;
+	esac
+
+	if [ "$command" ]; then
+		$BSDCFG_LIBE/$APP_DIR/$command ${USE_XDIALOG:+-X}
+	fi
+done
+
+return $SUCCESS

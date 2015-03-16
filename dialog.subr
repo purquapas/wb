@@ -1,0 +1,73 @@
+BSDCFG_SHARE="/usr/share/bsdconfig"
+[ ! -f ${BSDCFG_SHARE}/common.subr ] && err 1 "${MAGENTA}You have no bsdconfig stuff in ${GREEN}/usr/share/bsdconfig${MAGENTA} and/or ${GREEN}/usr/libexec/bsdconfig${NORMAL}"
+. $BSDCFG_SHARE/common.subr
+f_dprintf "%s: loading includes..." "$0"
+f_include $BSDCFG_SHARE/dialog.subr
+f_include $BSDCFG_SHARE/mustberoot.subr
+
+BSDCFG_LIBE="/usr/libexec/bsdconfig" APP_DIR="080.console"
+
+: ${msg_yes:="Yes"}
+: ${msg_no:="No"}
+: ${msg_ok:="Ok"}
+: ${msg_cancel:="Cancel"}
+
+
+if [ -n "${EXTHELP}" ]; then
+	cbsd_help="--help-button --help-label \"\$msg_help\""
+else
+	cbsd_help=
+fi
+
+#
+# Exit codes for [X]dialog(1)
+# some of them still missed in old dialog.subr version (DFLY?)
+: ${DIALOG_OK:=${SUCCESS:-0}}
+: ${DIALOG_CANCEL:=${FAILURE:-1}}
+: ${DIALOG_HELP:=2}
+: ${DIALOG_ITEM_HELP:=2}
+: ${DIALOG_EXTRA:=3}
+: ${DIALOG_ITEM_HELP:=4}
+: ${DIALOG_ERROR:=254} # sh(1) can't handle the default of `-1'
+: ${DIALOG_ESC:=255}
+
+# default menubox without help button
+# require: menu_list
+cbsd_menubox()
+{
+	local height width rows
+
+	mtag=
+
+	eval f_dialog_menu_with_help_size height width rows \
+		\"\$title\"  \
+		\"\$btitle\" \
+		\"\$prompt\" \
+		\"\$hline\"  \
+		$menu_list
+
+	local menu_choice=$( eval $DIALOG		\
+		--clear					\
+		--title \"\$title\"			\
+		--backtitle \"\$btitle\"		\
+		--hline \"\$hline\"			\
+		--item-help				\
+		--ok-label \"\$msg_ok\"			\
+		--cancel-label \"Exit\"			\
+		${USE_XDIALOG:+--help \"\"}		\
+		--default-item \"\$defaultitem\"	\
+		--menu \"\$prompt\"			\
+		$height $width $rows			\
+		$menu_list				\
+		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
+		)
+
+	local retval=$?
+	[ -z "${menu_choice}" ] && retval=1
+
+	f_dialog_data_sanitize menu_choice
+	f_dialog_menutag_store "$menu_choice"
+
+	f_dialog_menutag_fetch mtag
+	return $retval
+}

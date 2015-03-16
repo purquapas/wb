@@ -1,0 +1,51 @@
+#!/usr/local/bin/cbsd
+#v10.0.2
+CBSDMODULE="jail"
+MYARG=""
+MYOPTARG="jname mode editor"
+MYDESC="Show or modify jail description"
+ADDHELP="mode=update for update information\n\
+jname - specify jname\n\
+editor=mcedit for altrnative editor\n"
+EXTHELP="wf_jdescr.html"
+
+. ${subr}
+. ${strings}
+
+init $*
+
+showdescr()
+{
+	SYSDIR="${jailsysdir}/${jname}"
+	PDESCR="${SYSDIR}/descr"
+
+	if [ "${mode}" = "update" ]; then
+		[ ! -d "${SYSDIR}" ] && mkdir -m 0775 -p ${SYSDIR}
+		touch ${PDESCR} && chown ${cbsduser}:${cbsduser} ${PDESCR}
+		${editor} "${PDESCR}"
+	else
+		[ -f "${PDESCR}" ] && /bin/cat ${PDESCR}
+	fi
+}
+
+showall()
+{
+	local jname
+
+	2>/dev/null cbsdsql local SELECT jname FROM jails WHERE status\<2| while read jname; do
+		[ -z "${jname}" ] && continue
+		${ECHO} "${BOLD}${jname} {${NORMAL}"
+		showdescr
+		${ECHO} "${BOLD}}${NORMAL}"
+	done
+}
+
+[ -z "${editor}" ] && editor="nvi"
+
+if [ -z "${jname}" ]; then
+	showall
+else
+	. ${jrcconf}
+	[ $? -eq 1 ] && err 1 "${MAGENTA}No such jail: ${GREEN}${jname}${NORMAL}"
+	showdescr
+fi

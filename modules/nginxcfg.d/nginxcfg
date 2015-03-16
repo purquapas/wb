@@ -1,0 +1,261 @@
+#!/usr/local/bin/cbsd
+#v10.1.5
+globalconf="${workdir}/cbsd.conf"
+CBSDMODULE="helpers"
+MYARG="jname"
+MYOPTARG="mode formfile"
+MYDESC="cbsd simple nginx helper"
+ADDHELP="jname= modify nginx cfg for this jail\n\
+mode=bootstrap,commit\n\
+ bootstrap - init new db with default values\n\
+ commit - apply changes\n"
+
+. ${subr}
+. ${strings}
+. ${system}
+init $*
+
+. ${workdir}/imghelper.subr
+
+JAIL_ROOT_DIR="${jailsysdir}/${jname}"
+SKEL_DIR="${JAIL_ROOT_DIR}/skel"
+PRODUCT="nginx"
+
+# keep this settins for imghelper
+: ${formfile="${JAIL_ROOT_DIR}/modules/nginxcfg.d/forms.sqlite"}
+
+# make sure we have nginx in jail
+check_for_nginx()
+{
+	[ ! -f "${data}/usr/local/sbin/nginx" ] && err 1 "${MAGENTA}You have no nginx packages. Please install it first, e.g:${GREEN}cbsd pkg jname=${jname} mode=install nginx${NORMAL}"
+}
+
+initdb()
+{
+	local _mydbdir="${jailsysdir}/${jname}/modules/nginxcfg.d"
+	local _mydb="${_mydbdir}/forms.sqlite"
+	local newdb="${1}"
+
+	[ ! -d "${_mydbdir}" ] && mkdir -p ${_mydbdir}
+	[ "${newdb}" = "force" ] && /bin/rm -f ${_mydb}
+	[ -f ${_mydb} ] && return 0
+
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${_mydb} ${sharedir}/forms.schema
+
+	# default values
+	/usr/local/bin/sqlite3 ${_mydb} << EOF
+BEGIN TRANSACTION;
+INSERT INTO forms ( group_id,order_id,param,desc,def,cur,new,mandatory,attr,type ) VALUES ( 1,1,"server_name","server_name for vhost",'example.my.domain','','',1, "maxlen=60", "inputbox" );
+INSERT INTO forms ( group_id,order_id,param,desc,def,cur,new,mandatory,attr,type ) VALUES ( 1,2,"http_index","index file",'index.php','','',1, "maxlen=30", "inputbox" );
+INSERT INTO forms ( group_id,order_id,param,desc,def,cur,new,mandatory,attr,type ) VALUES ( 1,3,"http_root","Document Root path",'/usr/home/web/site1/public_html','','',1, "maxlen=128", "inputbox" );
+COMMIT;
+EOF
+
+	# Put version
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${_mydb} ${sharedir}/forms_version.schema
+
+	/usr/local/bin/sqlite3 ${_mydb} << EOF
+BEGIN TRANSACTION;
+INSERT INTO system ( version ) VALUES ( "201502" );
+COMMIT;
+EOF
+
+	${ECHO} "${MAGENTA}New helper DB initializated: ${GREEN}${_mydb}${NORMAL}"
+}
+
+regen_nginx_conf()
+{
+	local tplconf="${helper_workdir}/nginx.conf"
+	local newconf="${data}/usr/local/etc/nginx/nginx.conf"
+	local tpl_php_core="${helper_workdir}/php-core.conf"
+	local new_php_core="${data}/usr/local/etc/nginx/php-core.conf"
+
+	[ ! -f "${tplconf}" ] && err 1 "${MAGENTA}No such template in: ${GREEN}${tplconf}${NORMAL}"
+	[ ! -f "${tpl_php_core}" ] && err 1 "${MAGENTA}No such template in: ${GREEN}${tpl_php_core}${NORMAL}"
+
+	# %%WORKER_PROCESSES%% determine automatically or get from input form
+	local worker_processess=1
+
+	# %%USER%% %%GROUP%%
+	local user=www
+	local group=www
+
+	# %%HTTP_PORT%%
+	local http_port=80
+
+	# %%ERROR_LOG%%
+	local error_log="/var/log/httpd/nginx.err"
+
+	[ ! -d "${data}/usr/local/etc/nginx" ] && mkdir -p ${data}/usr/local/etc/nginx
+
+	/usr/bin/sed -Ees:%%WORKER_PROCESSES%%:"${worker_processess}":g \
+	-es:%%USER%%:"${user}":g \
+	-es:%%GROUP%%:"${group}":g \
+	-es:%%HTTP_PORT%%:"${http_port}":g \
+	-es:%%ERROR_LOG%%:"${error_log}":g \
+	${tplconf} > ${newconf}
+	
+	/bin/cp ${tpl_php_core} ${new_php_core}
+}
+
+regen_nginx_vhosts()
+{
+	local tplconf="${helper_workdir}/vhosts-minimal.conf"
+	local newconf="${data}/usr/local/etc/nginx/vhosts/vhost.conf"
+
+	[ ! -f "${tplconf}" ] && err 1 "${MAGENTA}No such template in: ${GREEN}${tplconf}${NORMAL}"
+
+	# %%HTTP_PORT%%
+	local http_port=80
+
+	# %%SERVER_NAME%%
+	[ -z "${server_name}" ] && err 1 "${MAGENTA}No server_name variable${NORMAL}"
+
+	# %%ERROR_LOG%%
+#	[ -z "${error_log}" ] && local error_log="/var/log/httpd/${server_name}.err"
+	[ -z "${error_log}" ] && local error_log="/var/log/httpd/vhost.err"
+
+	# %%ERROR_LEVEL%%
+	[ -z "${error_level}" ] && local error_level="error"
+
+	# %%ACCESS_LOG%%
+#	[ -z "${access_log}" ] && local access_log="/var/log/httpd/${server_name}.acc"
+	[ -z "${access_log}" ] && local access_log="/var/log/httpd/vhost.acc"
+
+	# %%HTTP_ROOT%%
+	[ -z "${http_root}" ] && local http_root="/usr/home/web/${server_name}/public_html"
+
+	# %%HTTP_INDEX%%
+	[ -z "${http_index}" ] && local http_index="index.html index.htm"
+
+	[ ! -d "${data}/var/log/httpd" ] && mkdir -p ${data}/var/log/httpd
+	[ ! -d "${data}/${http_root}" ] && mkdir -p ${data}/${http_root}
+	[ ! -d "${data}/usr/local/etc/nginx/vhosts" ] && mkdir -p ${data}/usr/local/etc/nginx/vhosts
+
+	/usr/bin/sed -Ees:%%HTTP_PORT%%:"${http_port}":g \
+	-es:%%SERVER_NAME%%:"${server_name}":g \
+	-es:%%ERROR_LOG%%:"${error_log}":g \
+	-es:%%ERROR_LEVEL%%:"${error_level}":g \
+	-es:%%ACCESS_LOG%%:"${access_log}":g \
+	-es:%%HTTP_ROOT%%:"${http_root}":g \
+	-es:%%HTTP_INDEX%%:"${http_index}":g \
+	${tplconf} > ${newconf}
+}
+
+# store old config to temporary place
+make_backup()
+{
+	local nginxconf="${data}/usr/local/etc/nginx.conf"
+	local vhostconf="${data}/usr/local/etc/vhosts/vhost.conf"
+	local nginxconfbkp="${jailsysdir}/${jname}/nginx.conf.$$"
+	local vhostconfbkp="${jailsysdir}/${jname}/vhost.conf.$$"
+
+	trap "/bin/rm -f ${nginxconfbkp} ${vhostconfbkp}" HUP INT ABRT BUS TERM EXIT
+
+	[ -f "${nginxconf}" ] && /bin/cp ${nginxconf} ${nginxconfbkp}
+	[ -f "${vhostconf}" ] && /bin/cp ${vhostconf} ${vhostconfbkp}
+}
+
+# restore old config from backup
+restore_backup()
+{
+	local nginxconf="${data}/usr/local/etc/nginx.conf"
+	local vhostconf="${data}/usr/local/etc/vhosts/vhost.conf"
+	local nginxconfbkp="${jailsysdir}/${jname}/nginx.conf.$$"
+	local vhostconfbkp="${jailsysdir}/${jname}/vhost.conf.$$"
+
+	[ -f "${nginxconfbkp}" ] && /bin/mv ${nginxconfbkp} ${nginxconf}
+	[ -f "${vhostconfbkp}" ] && /bin/mv ${vhostconfbkp} ${vhostconf}
+	trap "" HUP INT ABRT BUS TERM EXIT
+}
+
+# exec nginx configtest and return code
+nginx_conf_test()
+{
+	local _ret
+
+	local mode
+
+	service jname=${jname} nginx oneconfigtest
+
+	_ret=$?
+	return ${_ret}
+}
+
+update_current_val()
+{
+	local i _T
+
+	for i in ${param}; do
+		eval _T=\${${i}}
+		[ -z "${_T}" ] && continue
+		${miscdir}/sqlcli ${formfile} UPDATE forms SET cur=\"${_T}\" WHERE param=\"${i}\"
+	done
+
+	return 0
+}
+
+
+# rename/move logs/docroot data
+migrate_data()
+{
+	local oldroot newroot
+	# docroot
+	oldroot=$( cbsdsql ${formfile} SELECT cur FROM forms WHERE param=\"http_root\" )
+	newroot=$( cbsdsql ${formfile} SELECT new FROM forms WHERE param=\"http_root\" )
+
+	[ -z "${oldroot}" ] && return 0
+	[ -z "${newroot}" ] && newroot="${oldroot}"
+
+	if [ "${oldroot}" != "${newroot}" ]; then
+		[ -d "${data}${oldroot}" ] && /bin/mv ${data}${oldroot} ${data}${newroot}
+	fi
+
+	[ ! -d "${data}${newroot}" ] && /bin/mkdir -p ${data}${newroot}
+}
+
+install_img()
+{
+	local _res _ret
+	make_backup
+
+	regen_nginx_conf
+	regen_nginx_vhosts
+
+	nginx_conf_test
+	_ret=$?
+
+	case ${_ret} in
+		0)
+			migrate_data
+			update_current_val
+			[ "${active_jail}" = "1" ] && service jname=${jname} nginx onereload
+			;;
+		*)
+			restore_backup
+			err 1 "${MAGENTA}Bad config. Rollback${NORMAL}"
+			echo "${_res}"
+			;;
+	esac
+}
+
+## MAIN
+helper_workdir="${moduledir}/nginxcfg.d"
+
+. ${jrcconf}
+[ $? -eq 1 ] && err 1 "${MAGENTA}No such jail: ${GREEN}${jname}${NORMAL}"
+
+initdb
+check_for_nginx
+
+case "${mode}" in
+	bootstrap)
+		initdb force
+		;;
+	commit)
+		param=$( cbsdsql ${formfile} SELECT param FROM forms ORDER by idx |/usr/bin/xargs )
+		load_forms
+		load_new
+		install_img
+		;;
+esac

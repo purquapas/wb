@@ -1,0 +1,16 @@
+#!/bin/sh
+#v9.0.0.
+globalconf="${workdir}/cbsd.conf";
+CBSDMODULE="build"
+MYDESC="List of object file"
+MYARG=""
+MYOPTARG=""
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+init $*
+
+/bin/ls -1 ${srcdir} |/usr/bin/grep ^obj

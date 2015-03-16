@@ -1,0 +1,117 @@
+#!/usr/local/bin/cbsd
+#v10.1.0
+globalconf="${workdir}/cbsd.conf";
+CBSDMODULE="jail"
+MYDESC="Ncurses based control for VM"
+MYARG="jname"
+MYOPTARG=""
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+. ${dialog}
+. ${strings}
+. ${tools}
+
+[ -z "${1}" ] && select_jail_by_list -s "List of local jails:" -r 0
+init $*
+
+dialog_menu_main()
+{
+	repo=0 # flags for execution jsetup-tui from repo get image
+
+	title=" Control for ${jname} "
+	hline=
+
+	local menu_list="
+		'EXIT'	'EXIT'	'Exit'
+	" # END-QUOTE
+
+
+	if [ ${jid} -ne 0 ]; then
+			menu_list="${menu_list} 'bstop'		'stop vm'		'cbsd bstop jname=${jname}'"
+			menu_list="${menu_list} 'blogin'	'attach to console'	'cbsd blogin jname=${jname}. Use Ctrl+b,d to detach (tmux)'"
+		else
+			menu_list="${menu_list} 'bstart'	'start vm'	'cbsd bstart jname=${jname}'"
+	fi
+
+	menu_list="${menu_list}	'bconfig'	'config'	'cbsd bconfig jname=${jname}'"
+	menu_list="${menu_list}	'-'	'-'	''"
+	menu_list="${menu_list}	'bremove'	'destroy vm'	'cbsd bremove jname=${jname}'"
+
+	local height width rows
+	eval f_dialog_menu_with_help_size height width rows \
+		\"\$title\"  \
+		\"\$btitle\" \
+		\"\$prompt\" \
+		\"\$hline\"  \
+		$menu_list
+
+	# Obtain default-item from previously stored selection
+	f_dialog_default_fetch defaultitem
+
+	local menu_choice
+	menu_choice=$( eval $DIALOG \
+		--clear                                 \
+		--title \"\$title\"                     \
+		--backtitle \"\$btitle\"                \
+		--hline \"\$hline\"                     \
+		--item-help                             \
+		--ok-label \"\$msg_ok\"                 \
+		--cancel-label \"Exit\"                 \
+		${USE_XDIALOG:+--help \"\"}             \
+		--default-item \"\$defaultitem\"        \
+		--menu \"\$prompt\"                     \
+		$height $width $rows                    \
+		$menu_list                              \
+		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
+	)
+
+	local retval=$?
+	f_dialog_data_sanitize menu_choice
+	f_dialog_menutag_store "$menu_choice"
+
+	# Only update default-item on success
+	[ $retval -eq $DIALOG_OK ] && f_dialog_default_store "$menu_choice"
+	return $retval
+}
+
+### MAIN
+. ${jrcconf}
+[ $? -eq 1 ] && err 1 "${MAGENTA}No such jail: ${GREEN}${jname}${NORMAL}"
+
+f_dialog_title "$msg_system_console_configuration"
+f_dialog_backtitle "${ipgm:+bsdconfig }$pgm"
+f_mustberoot_init
+
+while [ 1 ]; do
+	. ${jrcconf}
+	dialog_menu_main || f_die
+	f_dialog_menutag_fetch mtag
+	case "${mtag}" in
+		"EXIT")
+			exit 0
+			;;
+		bstart|bstop)
+			/usr/local/bin/cbsd ${mtag} jname=${jname}
+			echo " *** Complete. Press any key"
+			read p
+			;;
+		blogin)
+			/usr/local/bin/cbsd ${mtag} jname=${jname}
+			;;
+		bremove)
+			if getyesno "Remove vm from filesystem. Are you sure ?"; then
+				/usr/local/bin/cbsd ${mtag} jname=${jname}
+				echo " *** Complete. Press any key"
+				read p
+				f_die
+			fi
+			;;
+		"bconfig")
+			/usr/local/bin/cbsd bconfig jname=${jname}
+			;;
+	esac
+done

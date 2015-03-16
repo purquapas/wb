@@ -1,0 +1,125 @@
+#!/bin/sh
+#v10.1.2
+globalconf="${workdir}/cbsd.conf";
+MYARG=""
+MYOPTARG="rev dst patch"
+MYDESC="Update FreeBSD ports tree in /usr/ports"
+ADDHELP="rev=XXX where XXX - svn revision\n\
+dst= alternative path instead of /usr/ports\n
+patchset=apply patchet\n"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+readconf portsup.conf
+init $*
+
+init_svn()
+{
+	SCM=""
+
+	if [ -f "/usr/bin/svnlite" ]; then
+		SCM="/usr/bin/svnlite"
+	elif [ -f "/usr/local/bin/svn" ]; then
+		SCM="/usr/local/bin/svn"
+	else
+		err 1 "${MAGENTA}No svn in the base. Please install devel/subversion${NORMAL}"
+	fi
+
+	if [ -z "${scmbase}" ]; then
+		SCM_URL="${SVNBASE}"
+	else
+		SCM_URL="${scmbase}"
+	fi
+
+	return 0
+}
+
+init_git()
+{
+	SCM=""
+
+	if [ -f "/usr/local/bin/git" ]; then
+		SCM="/usr/local/bin/git"
+	else
+		err 1 "${MAGENTA}No git in the base. Please install devel/git${NORMAL}"
+	fi
+
+	if [ -z "${scmbase}" ]; then
+		SCM_URL="${GITBASE}"
+	else
+		SCM_URL="${scmbase}"
+	fi
+
+	return 0
+}
+
+svn_checkout()
+{
+	# repair and upgrade
+	if [ -d "${dst}/.svn" ]; then
+		cd ${dst}
+		${SCM} cleanup
+		${SCM} upgrade
+		${SCM} cleanup
+	fi
+
+	${SCM} checkout -r ${rev} ${SCM_URL} ${dst}
+}
+
+git_checkout()
+{
+	local _depth
+
+	[ "${depth}" != "0" ] && _depth="${depth}"
+
+	if [ -d "${dst}/.git" ]; then
+		cd ${dst} && ${SCM} checkout DragonFly_RELEASE_3_8
+		cd ${dst} && ${SCM} pull ${_depth}
+	else
+		${SCM} clone -b ${rev} ${git_flags} ${SCM_URL} ${dst}
+	fi
+}
+
+
+### MAIN ###
+. ${buildconf}
+readconf buildworld.conf
+. ${workdir}/universe.subr
+
+set +e
+. ${buildconf}
+set -e
+
+[ -z "${dst}" ] && dst="/usr/ports"
+
+LOCKFILE=${ftmpdir}/ports_$( /sbin/md5 -qs ${dst} ).lock
+makelock ${LOCKFILE}
+
+if [ "${platform}" = "DragonFly" ]; then
+	if [ ! -d "/usr/dports/.git" ]; then
+		/usr/bin/make -C /usr  dports-create
+		res=$?
+	else
+		/usr/bin/make -C /usr dports-update
+		res=$?
+	fi
+	exit $?
+fi
+
+[ ! -d "${dst}" ] && /bin/mkdir -p ${dst}
+
+case "${checkout_method}" in
+	svn*)
+		init_svn
+		svn_checkout
+		;;
+	git*)
+		init_git
+		git_checkout
+		;;
+	*)
+		err 1 "${ECHO}Unknown checkout method. Please specify it via: ${GREEN}portsup.conf${NORMAL}"
+esac

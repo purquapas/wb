@@ -1,0 +1,3 @@
+cbsd jcreate jconf=/usr/jails/modules/webdev/skel/jail1.jconf customskel=/usr/jails/modules/webdev/skel/skel fstablocal=/usr/jails/modules/webdev/skel/fstab.local
+#pkglist=/usr/jails/modules/webdev/skel/pkglist.list delpkglist=0
+

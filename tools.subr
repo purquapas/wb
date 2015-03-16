@@ -1,0 +1,236 @@
+if [ ! "$_CBSD_TOOLS_SUBR" ]; then
+_CBSD_TOOLS_SUBR=1
+###
+
+#v10.0.0
+#return 0 errcode for undefined type
+#return 1 errcode for ipv4
+#return 2 errcode for ipv6
+# fill VHID args when CARP-specific records
+iptype() {
+	local prefix p1 p2 ip
+	[ -z "${1}" ] && return 0
+	ip="${1}"
+
+	unset VHID IPWVHID
+	prefix=$( substr --pos=0 --len=4 --str=${ip} )
+
+	if [ "${prefix}" = "vhid" ]; then
+		p1=${ip%%#*}	# cut all after '#'
+		IPWVHID=${ip##*#}	# cut all before '#' (ip with mask)
+		ipwmask "${IPWVHID}"	# get IWM
+		VHID=${p1##*_}		# get VHID
+		. ${tools}
+		is_number ${VHID} && err 1 "${MAGENTA}Error in iptype: vhid should be number${NORMAL}"
+	else
+		# cut network prefix if exist
+		ipwmask "${1}"
+	fi
+
+	[ -z "${IWM}" ] && return 0
+
+	prefix=$( substr --pos=0 --len=4 --str=${IWM} )
+
+	if [ "${prefix}" = "vhid" ]; then
+		IPWVHID=
+		p1=${IWM%%#*}
+		IPWVHID=${IWM##*#}
+		VHID=${p1##*_}
+		. ${tools}
+		is_number ${VHID} && err 1 "${MAGENTA}Error in iptype: vhid should be number${NORMAL}"
+	fi
+
+	# Identify type {inet,inet6}.
+	case "${IWM}" in
+		*\.*\.*\.*)
+			echo "${IWM}" |/usr/bin/egrep -q '^([[:digit:]]{1,3}\.){3}[[:digit:]]{1,3}$' && return 1
+			# its not ip
+			return 0
+		;;
+		*:*)
+			return 2
+		;;
+		*)	return 0
+		;;
+	esac
+}
+
+
+resolvhost()
+{
+	HST=$( ${HOST_CMD} -4 -t a $1 | /usr/bin/awk '/has address /{print $4"\n"}' |/usr/bin/head -n1 |/usr/bin/egrep '^([[:digit:]]{1,3}\.){3}[[:digit:]]{1,3}$' )
+}
+
+# convert string in Xm (mbytes) or Xg (gbytes) to bytes
+# example: 
+# if conv2bytes "1g"; then
+#    echo $convval
+# fi
+# return bytes in $convval var
+# errcode 1 when error
+conv2bytes() {
+	local _testsize
+	local _value
+
+	[ -z "${1}" ] && return 1
+
+	# expand_number in conv2human does't support for float, eg: 1.1G
+	convval=$( ${miscdir}/conv2human ${1} |tr '[:upper:]' '[:lower:]' )
+	[ -z "${convval}" ] && return 1
+	[ ${convval} -gt 0 ] || return 1
+}
+
+# convert bytes to human readable form
+# example:
+# if conv2human "10000"; then
+#   echo $convval
+# fi
+# errcode 1 when not number
+conv2human() {
+	[ -z "${1}" ] && return 1
+	convval=$( ${miscdir}/conv2human ${1}| tr '[:upper:]' '[:lower:]' )
+	return $?
+}
+
+# $1 - $4 - ip
+# $5 - $8 - mask
+# example:
+# IFS="."
+# ip="192.168.1.55"
+# mask="255.255.255.248"
+# first_ips_w_mask 192.168.1.55 255.255.255.248
+first_ips_w_mask()
+{
+	printf "%d.%d.%d.%d\n" "$(($1 & $5))" "$(($2 & $6))" "$(($3 & $7))" "$(( ($4 & $8) + 1 ))"
+}
+
+
+# print prefix from mask
+# example: cdr=$( mask2cdr 255.255.255.248 )
+mask2cdr ()
+{
+	# Assumes there's no "255." after a non-255 byte in the mask
+	local x=${1##*255.}
+	set -- 0^^^128^192^224^240^248^252^254^ $(( (${#1} - ${#x})*2 )) ${x%%.*}
+	x=${1%%$3*}
+	echo $(( $2 + (${#x}/4) ))
+}
+
+# print mask from prefix
+# example: mask=$( cdr2mask 24 )
+cdr2mask ()
+{
+	# Number of args to shift, 255..255, first non-255 byte, zeroes
+	set -- $(( 5 - ($1 / 8) )) 255 255 255 255 $(( (255 << (8 - ($1 % 8))) & 255 )) 0 0 0
+	[ $1 -gt 1 ] && shift $1 || shift
+	echo ${1-0}.${2-0}.${3-0}.${4-0}
+}
+
+# return $jname as selected jail by id
+# -s "is subject for list"
+# -a [0|1] show only active (status=on jail): 0, or all: 1
+# -r [0|1] select jname from remote node too (1), or only local: 0
+# -e emulator ( jls for jail and bls for bhyve ): jls
+select_jail_by_list()
+{
+	local _res _id i=1
+	local sqldelimer=" "
+	local emulator="jls"
+
+	local only_local=0 # default - local node only
+	local subject="List of online jails:"
+
+	local searchstr
+	local active="."
+
+	while getopts "a:r:s:e:" opt; do
+		case "$opt" in
+			a) active="${OPTARG}" ;;
+			r) only_local="${OPTARG}" ;;
+			s) subject="${OPTARG}" ;;
+			e) emulator="${OPTARG}" ;;
+		esac
+		shift $(($OPTIND - 1))
+	done
+
+	if [ $only_local -eq 0 ]; then
+		searchstr="env NOCOLOR=1 ${emulator} shownode=1 display=jname,status header=0"
+	else
+		searchstr="env NOCOLOR=1 ${emulator} alljails=1 shownode=1 display=jname,status header=0"
+	fi
+
+	eval $( ${searchstr} |/usr/bin/grep ${active} |while read nodename jname status; do
+		echo "local nodename${i}=\"${nodename}\""
+		echo "local jname${i}=\"${jname}\""
+		i=$(( i + 1 ))
+	done )
+
+	${ECHO} "${BOLD}0 .. CANCEL${NORMAL}"
+
+	for i in $( /usr/bin/seq 1 9999 ); do
+		eval _mynode="\$nodename${i}"
+		[ -z "${_mynode}" ] && break
+		[ "${_mynode}" = "${nodename}" ] && _mynode="${BOLD}local${NORMAL}"
+		eval _myjname="\$jname${i}"
+		[ -z "${_myjname}" ] && break;
+		[ $i -eq 0 ] && ${ECHO} "${MAGENTA}${subject}${NORMAL}"
+		${ECHO} "${BOLD}${i} .. ${GREEN}${_myjname} ${NORMAL}on ${GREEN}${_mynode}${NORMAL}"
+	done
+
+	[ $i -eq 0 ] && err 1 "${MAGENTA}No jails found${NORMAL}"
+	echo
+	i=$(( i - 1 ))
+	printf "${BOLD}Enter id 0-${i} or jail name:${NORMAL} "
+	set -e
+	read _id
+	set +e
+	[ "${_id}" = "0" ] && exit 0
+	if ! is_number ${_id}; then
+		eval jname="\$jname${_id}"
+	else
+		eval jname="${_id}"
+	fi
+
+	remote=2 # for autoremote
+}
+
+# libchk for testing dependency of cbsd and updatesql. Exit when stuff is broken
+test_sql_stuff()
+{
+	local _files="/usr/local/bin/cbsd ${miscdir}/updatesql"
+	local _i _res
+
+	for _i in ${_files}; do
+		[ ! -f "${_i}" ] && continue
+		_res=$( /usr/bin/ldd ${_i} 2>/dev/null|/usr/bin/grep " not found " )
+		if [ -n "${_res}" ]; then
+			echo "WARNING: ${_i} is broken:"
+			echo "${_res}"
+			echo "Please rebuild sources and try again"
+			exit 1
+		fi
+	done
+}
+
+# re-edit /etc/hosts in jail for $1 IPs
+# $1 - ip
+# $2 - /etc/hosts
+mkjhosts()
+{
+	local _IP=$1
+	local _JHOST=$2
+
+	[ $applytpl -eq 0 -o "$ver" = "empty" ] && return 0
+	[ -z "${host_hostname}" ] && return 0
+
+	local _tpl="CBSD autotpl for mkhostsfile"
+	local _TMPH="${ftmpdir}/hosts.$$"
+
+	/bin/cp -a ${_JHOST} ${_TMPH}
+	/usr/bin/grep -v "${_tpl}" ${_TMPH} > ${_JHOST}
+	echo "${_IP} ${host_hostname} # ${_tpl}" >> ${_JHOST}
+	/bin/rm -f ${_TMPH}
+}
+
+###
+fi

@@ -1,0 +1,49 @@
+if [ ! "$_CBSD_STRINGS_SUBR" ]; then
+_CBSD_STRINGS_SUBR=1
+###
+
+# sqllist "this|is|  it" a b c
+# echo $a
+# sqllistdelimer for "|" alternative delimer
+sqllist()
+{
+	local _i _str IFS _key _T
+
+	_str="$1"
+	if [ -n "${sqllistdelimer}" ]; then
+		IFS="${sqllistdelimer}"
+	else
+		IFS="|"
+	fi
+	_i=2
+
+	for _key in ${_str}; do
+		eval _T=\${${_i}}
+		_i=$((_i + 1))
+		export ${_T}="${_key}"
+	done
+}
+
+conv_status()
+{
+	case "${status}" in
+		0)
+			status="Off"
+			;;
+		1)
+			status="On"
+			;;
+		2)
+			status="Slave"
+			;;
+		3)
+			status="Maintenance"
+			;;
+		*)
+			status="Unknown"
+		;;
+	esac
+}
+
+###
+fi

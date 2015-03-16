@@ -1,0 +1,191 @@
+if [ ! "$_CBSD_JFS_SUBR" ]; then
+_CBSD_JFS_SUBR=1
+###
+
+# movedata $1-from $2-to
+mvdata()
+{
+	local _src _dst
+	[ -z "$1" -o -z "$2" ] && err 1 "mvdata: empty arguments"
+
+	_src=$1
+	_dst=$2
+
+	[ -d "${_dst}" ] && err 1 "${_dst} directory exist. Please remove them first"
+
+	if [ "${zfsfeat}" = "0" ]; then
+		mv ${_src} ${_dst}
+		return 0
+	fi
+
+	. $zfstool
+
+	zfsmnt "${_src}"
+	_res=$?
+
+	readconf zfs.conf
+
+	case $_res in
+		0)
+			echo "Switch to ZFS pool"
+			zfsmnt ${workdir}
+			/sbin/zfs create ${zfs_create_flags} -o mountpoint=${_dst} "${ZPOOL}${_dst}"
+			/sbin/zfs mount "${ZPOOL}${_dst}"
+			/bin/mkdir ${_dst}
+			cd ${_src} && /bin/pax -p eme -rw . ${_dst} && ${CHFLAGS_CMD} -R noschg ${_src} && /bin/rm -rf ${_src}
+		;;
+		1)
+			/sbin/zfs umount -f ${_src} > /dev/null 2>&1
+			/sbin/zfs set mountpoint=${_dst} ${ZPOOL}
+			/sbin/zfs mount ${ZPOOL}
+			/bin/rmdir ${_src}
+		;;
+		2)
+			/sbin/zfs set mountpoint=${_dst} ${ZPOOL}
+			/sbin/zfs mount ${ZPOOL}
+			/bin/rmdir ${_src}
+		;;
+	esac
+
+	return 0
+}
+
+
+# clone data
+# mode = cp, rsync, rsyncforce (no warning for existance TO dir)
+# #clonedata /usr/jails/jails-data/jail1-data /mn rsync
+clonedata()
+{
+	local _src _dst _mode _go _force _zpool
+
+	[ -z "$1" -o -z "$2" -o -z "$3"  ] && err 1 "clonedata: empty arguments"
+	[ -z "${jname}" ] && err 1 "No jname"
+
+	_src=$1
+	_dst=$2
+	_mode=$3
+	_force=0
+
+	readconf zfs.conf
+
+	case "${_mode}" in
+		"cp") _go="/bin/cp -Rp " ;;
+		"rsync") _go="/usr/local/bin/rsync -avzz --delete " ;;
+		"rsyncforce") _go="/usr/local/bin/rsync -avzz --delete "; _force=1 ;;
+		*) err 1 "Unsupported mode" ;;
+	esac
+
+	[ -d "${_dst}" -a ${_force} -eq 0 ] && err 1 "${_dst} directory exist. Please remove them"
+
+	. ${zfstool}
+
+	if [ ! -d "${_dst}" ]; then
+		if [ $zfsfeat -eq 1 ]; then
+			_zpool=$( /sbin/zfs list ${jaildatadir} |/usr/bin/tail +2 |/usr/bin/awk '{printf $1}' )
+			/sbin/zfs create ${zfs_create_flags} -o mountpoint=${_dst} ${_zpool}/${jname}
+			/sbin/zfs mount ${_zpool}/${jname}
+		else
+			mkdir -p ${_dst}
+		fi
+	fi
+
+	${_go} ${_src}/* ${_dst}/
+}
+
+# remove data from disk
+# $jname must be set
+# if "$2" = "force" then force to remove non-empty dir
+removedata()
+{
+	local _data
+
+	[ -z "$1"  ] && err 1 "removedata: empty arguments"
+	[ -z "${jname}"  ] && err 1 "removedata: jname variable must be set"
+
+	_data=$1
+
+	[ ! -d "${_data}" ] && return 0
+
+	if [ $zfsfeat -eq 1 ]; then
+		. $zfstool
+		unmountdata ${_data}
+		/sbin/zfs destroy -r "${ZPOOL}"
+		[ -d "${_data}" ] && rmdir ${_data}
+	else
+		if [ "$2" = "force" ]; then
+			${CHFLAGS_CMD} -R noschg ${_data}
+			/bin/rm -rf ${_data}
+		else
+			/bin/rmdir ${_data}
+		fi
+	fi
+
+	[ -d "${_data}" ] && err 1 "${MAGENTA}Directory not empty or busy: ${_data}${NORMAL}"
+	return 0
+}
+
+
+# unmount if mount
+unmountdata()
+{
+	local _data
+
+	[ -z "$1" ] && err 1 "unmountdata: no arguments"
+	_data=$1
+
+	[ ! -d "${_data}" ] && return 1
+
+	. $zfstool
+	zfsmnt ${_data}
+
+	if [ $? -eq 1 ]; then
+		/sbin/zfs unmount -f ${_data}
+		rmdir ${_data}
+	fi
+}
+
+
+create_fs()
+{
+	local data="${1}"
+
+	[ -z "${data}" ] && return 0
+
+	if [ "${zfsfeat}" = "1" ]; then
+		. $zfstool
+		ZPOOL=$( /sbin/zfs get -Ho value name ${jaildatadir} )
+		if zfsroot $jname; then
+			err 1 "$ZPOOL/$jname already in use"
+		fi
+		/sbin/zfs create ${zfs_create_flags} -o mountpoint=${data} ${ZPOOL}/$jname
+	elif [ "${hammerfeat}" = "1" ]; then
+		[ ! -d /pfs ] && err 1 "${MAGENTA}No such /pfs directory${NORMAL}"
+		local localdir=$( /usr/bin/basename ${data} )
+		cd /pfs
+		/bin/mkdir -p ${data}
+		/sbin/hammer pfs-master ${localdir}
+		/sbin/mount -t ${NULLFS} /pfs/${localdir} ${data}
+	else
+		[ ! -d ${data} ] && /bin/mkdir -p ${data}
+	fi
+}
+
+
+#  create_hammer_fs jails
+#
+create_hammer_fs()
+{
+	cd /pfs
+	/sbin/hammer pfs-master $1
+}
+
+#  destroy_hammer_fs jails
+# 
+destroy_hammer_fs()
+{
+	cd /pfs
+	/sbin/hammer -y pfs-destroy $1
+}
+
+###
+fi

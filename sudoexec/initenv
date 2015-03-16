@@ -1,0 +1,773 @@
+#!/bin/sh
+#v10.1.2
+export distdir=${distdir:-"/usr/local/cbsd"}
+globalconf="${distdir}/cbsd.conf";
+globalconflua="${distdir}/cbsd.lua";
+MYLOCK="/tmp/initenv.lock"
+MYDESC="Node re-initialization"
+MYARG=""
+MYOPTARG=""
+
+first_init=1
+
+if [ ! -f "${globalconf}" ]; then
+	${ECHO} "${MAGENTA}no such conf file${NORMAL}";
+	exit
+fi
+
+if [ "$1" = "--help" ]; then
+	echo "${MYDESC}"
+	exit 0
+fi
+
+if [ "$1" = "inter=0" ]; then
+	inter=0
+	shift
+fi
+
+[ -n "${1}" -a -f "${1}" ] && INITCFG="${1}" && shift
+
+desc_question()
+{
+	local _DEFAULT
+	local _DESC
+
+	if [ "${inter}" = "0" ]; then
+		eval answ=\$$1
+		return 0
+	fi
+
+	eval _DEFAULT="\$${1}_default"
+	eval _DESC="\$${1}_desc"
+
+	case "$1" in
+		"nodename")
+			${ECHO} "${BOLD}${1}: ${_DESC}: ${GREEN}${_DEFAULT}${NORMAL}"
+			read answ
+			[ -z "$answ" ] && answ="${_DEFAULT}"
+			return 0
+		;;
+		"nat_enable")
+			if ! getyesno "${1}: ${_DESC}?"; then
+				answ=0
+				return 0
+			fi
+			[ -z "$answ" ] && answ="${_DEFAULT}"
+			answ=1
+			return 0
+		;;
+		"nodeip")
+			${ECHO} "${BOLD}${1}: ${_DESC} (used for node interconnection), e.g: ${GREEN}${_DEFAULT}${NORMAL}"
+			read answ
+			[ -z "$answ" ] && answ="${_DEFAULT}"
+			return 0
+		;;
+		"jnameserver")
+			${ECHO} "${BOLD}${1}: ${_DESC} (for jails resolv.conf), e.g.: ${GREEN}${_DEFAULT}${NORMAL}"
+			read answ
+			[ -z "$answ" ] && answ="${_DEFAULT}"
+			return 0
+		;;
+		"nodeippool")
+			${ECHO} "${BOLD}${1}: ${_DESC} (networks for jails)${NORMAL}"
+			${ECHO} "${MAGENTA}Hint: use space as delimer for  multiple networks, e.g.: ${GREEN}${_DEFAULT}${NORMAL}"
+			read answ
+			[ -z "$answ" ] && answ="${_DEFAULT}"
+			return 0
+		;;
+		"fbsdrepo")
+			if getyesno "${1}: ${_DESC} for fetching base/kernel?"; then
+				answ=1
+			else
+				answ=0
+			fi
+			return 0
+		;;
+		"zfsfeat")
+			if getyesno "${1}: You running on ZFS-based system. ${_DESC}"; then
+				answ=1
+			else
+				answ=0
+			fi
+			return 0
+		;;
+		"hammerfeat")
+			if getyesno "${1}: You running on HAMMERFS-based system. ${_DESC}"; then
+				answ=1
+			else
+				answ=0
+			fi
+			return 0
+		;;
+		"mdtmp")
+			#will be processed differently. temporary hide this
+			#	${ECHO} "${BOLD}${1}: ${_DESC} ?(${_DEFAULT} mb default)${NORMAL}"
+			#	${ECHO} "${MAGENTA}This md disk will be used for temporary operation? 0 - for disable or N (in mb) for disk size e.g: ${GREEN}${_DEFAULT}${NORMAL}"
+			#	read answ
+			#	[ -z "${answ}" ] && answ=0
+			answ=0
+			return 0
+		;;
+		"stable")
+			${ECHO} "${BOLD}${1}: ${_DESC} ?${NORMAL}"
+			${ECHO} "${MAGENTA}(STABLE_X instead of RELEASE_X_Y branch for base/kernel will be used), e.g.: ${GREEN}${_DEFAULT} ${MAGENTA}(use release)${NORMAL}"
+			read answ
+			[ -z "${answ}" ] && answ="${_DEFAULT}"
+			return 0
+		;;
+		"parallel")
+			${ECHO} "${BOLD}${1}: ${_DESC} ?${NORMAL}"
+			${ECHO} "${MAGENTA}(0 - no parallel or positive value (in seconds) as timeout for next parallel sequence) e.g: ${GREEN}${_DEFAULT}${NORMAL}"
+			read answ
+			[ -z "${answ}" ] && answ="${_DEFAULT}"
+			return 0
+		;;
+		"sqlreplica")
+			${ECHO} "${BOLD}${1}: ${_DESC} ?${NORMAL}"
+			${ECHO} "${MAGENTA}(0 - no replica, 1 - try to replicate all local events to remote nodes) e.g: ${GREEN}${_DEFAULT}${NORMAL}"
+			read answ
+			[ -z "${answ}" ] && answ="${_DEFAULT}"
+			return 0
+		;;
+		*)
+		return 1
+		;;
+	esac
+}
+
+# check for old install and if exist - execute pre scripts from upgrade directory
+# setup pkg if no other cfg
+phase0()
+{
+	local myversion cbsdd_enable cbsd_workdir workdir
+
+	. ${distdir}/${localcbsdconffile}
+	newver="${myversion}"
+
+	. /etc/rc.conf
+
+	[ -z "${cbsdd_enable}" -o -z "${cbsd_workdir}" ] && return 0
+
+	[ ! -f "${cbsd_workdir}/cbsd.conf" ] && return 0
+
+	first_init=0
+
+	workdir="${cbsd_workdir}"
+	. "${cbsd_workdir}/cbsd.conf"
+
+	oldver="${myversion}"
+
+	${ECHO} "${MAGENTA}[Stage 0:${GREEN} upgrading and migration data from ${oldver} to ${newver}${MAGENTA}]${NORMAL}"
+
+	[ -d "${distdir}/upgrade" ] && /usr/bin/find ${distdir}/upgrade/ -type f -depth 1 -maxdepth 1 -name pre-patch-\* -exec {} \;
+}
+
+# execute post scripts from upgrade directory
+phaseX()
+{
+	local myversion cbsdd_enable cbsd_workdir workdir
+	${ECHO} "${MAGENTA}[Stage X:${GREEN} upgrading${MAGENTA}]${NORMAL}"
+	[ -d "${distdir}/upgrade" ] && /usr/bin/find ${distdir}/upgrade/ -type f -depth 1 -maxdepth 1 -name post-patch-\* -exec {} \;
+}
+
+
+phase1()
+{
+	local cbsd_home platform
+	. ${distdir}/${localcbsdconffile}
+
+	platform=$( /usr/bin/uname -s )
+
+	[ -f "${distdir}/${platform}.subr" ] && . ${distdir}/${platform}.subr
+
+	${ECHO} "${MAGENTA}[Stage 1:${GREEN} account & dir hier${MAGENTA}]${NORMAL}"
+	/usr/bin/id ${cbsduser} > /dev/null 2>&1
+
+	if [ $? -eq 1 ]; then
+		echo "No such user ${cbsduser}. Please follow instruction at http://www.bsdstore.ru/en/installing_cbsd.html"
+		echo "if you install not from the ports"
+		exit 1
+	fi
+
+	# check for correct homedir
+	cbsd_home=$( /usr/bin/grep ^cbsd /etc/master.passwd | /usr/bin/cut -d : -f 9 )
+
+	[ "${cbsd_home}" != "${workdir}" ] && /usr/sbin/pw usermod ${cbsduser} -d ${workdir} >/dev/null 2>&1
+
+	[ ! -d "${workdir}" ] && mkdir -m 755 ${workdir}
+	$ECHO "${MAGENTA} * Check hier and permission..."
+	mtree -deU -f ${distdir}/etc/cbsd.mtree -p ${workdir}
+	printf "${NORMAL}"
+}
+
+phase2()
+{
+	local _dir _ldir _rdir _file _dirhier _d platform
+
+	${ECHO} "${MAGENTA}[Stage 2: ${GREEN}build tools${MAGENTA}]${NORMAL}"
+
+	platform=$( /usr/bin/uname -s )
+
+	[ ! -f "${distdir}/bin/cbsdsftp" ] && /usr/bin/cc ${distdir}/bin/cbsdsftp.c -o ${distdir}/bin/cbsdsftp -lssh2 -L/usr/local/lib -I/usr/local/include
+	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/bin/cbsdsftp ${bindir}/cbsdsftp
+	
+	[ ! -f "${distfir}/bin/cbsdssh" ] && /usr/bin/cc ${distdir}/bin/cbsdssh.c -o ${distdir}/bin/cbsdssh -lssh2 -L/usr/local/lib -I/usr/local/include
+	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/bin/cbsdssh ${bindir}/cbsdssh
+
+	installne "-o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/bin/rexe ${bindir}/rexe
+
+	[ ! -f "${distdir}/sbin/netmask" ] && /usr/bin/cc ${distdir}/sbin/netmask.c -o ${distdir}/sbin/netmask
+	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/sbin/netmask ${sbindir}/netmask
+
+	[ ! -f "${distdir}/misc/sqlcli" ] && /usr/bin/cc ${distdir}/misc/src/sqlcli.c -lsqlite3 -L/usr/local/lib -I/usr/local/include -o ${distdir}/misc/sqlcli
+	installne "-s -o ${cbsduser} -g ${cbsduser} -m 500" ${distdir}/misc/sqlcli ${miscdir}/sqlcli
+
+	[ ! -f "${distdir}/misc/cbsdlogtail" ] && /usr/bin/cc ${distdir}/misc/src/cbsdlogtail.c -o ${distdir}/misc/cbsdlogtail
+	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/cbsdlogtail ${miscdir}/cbsdlogtail
+
+	[ ! -f "${distdir}/misc/elf_tables" ] && /usr/bin/cc -I/usr/local/include -I/usr/local/include/libelf -L/usr/local/lib ${distdir}/misc/src/elf_tables.c -lelf -o ${distdir}/misc/elf_tables
+	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/elf_tables ${miscdir}/elf_tables
+
+	[ ! -f "${distdir}/misc/conv2human" ] && /usr/bin/cc -I/usr/local/include -I/usr/local/include/libelf -L/usr/local/lib ${distdir}/misc/src/conv2human.c -lelf -o ${distdir}/misc/conv2human -lutil
+	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/conv2human ${miscdir}/conv2human
+
+	[ ! -f "${distdir}/misc/cbsd_fwatch" ] && /usr/bin/cc ${distdir}/misc/src/cbsd_fwatch.c -o ${distdir}/misc/cbsd_fwatch
+	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/cbsd_fwatch ${miscdir}/cbsd_fwatch
+
+	[ ! -f "${distdir}/misc/cbsd_dot" ] && /usr/bin/cc ${distdir}/misc/src/cbsd_dot.c -o ${distdir}/misc/cbsd_dot
+	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/cbsd_dot ${miscdir}/cbsd_dot
+
+	[ ! -f "${distdir}/misc/popcnttest" ] && /usr/bin/cc ${distdir}/misc/src/popcnttest.c -o ${distdir}/misc/popcnttest -msse4.2 > /dev/null 2>&1 || /usr/bin/true
+	[ -f "${miscdir}/popcnttest" ] && installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/popcnttest ${miscdir}/popcnttest
+
+	[ ! -f "${distdir}/misc/chk_arp_byip" ] && /usr/bin/cc ${distdir}/misc/src/chk_arp_byip.c -o ${distdir}/misc/chk_arp_byip
+	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/chk_arp_byip ${miscdir}/chk_arp_byip
+
+	[ ! -f "${distdir}/misc/daemon" ] && /usr/bin/cc ${distdir}/misc/src/daemon.c -lutil -o ${distdir}/misc/daemon
+	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/daemon ${miscdir}/daemon
+
+	[ ! -f "${distdir}/tools/xo" ] && /usr/bin/cc ${distdir}/tools/src/xo.c -lxo -I/usr/include/libxo -I/usr/local/include/libxo -L/usr/local/lib -lxo -o ${distdir}/tools/xo
+	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/tools/xo ${toolsdir}/xo
+
+	if [ -f "/usr/local/bin/cbsd" ]; then
+		CURVERSION=$(/usr/local/bin/cbsd -c version )
+		if [ "${CURVERSION}" != "${myversion}" ]; then
+			make -C ${distdir}/bin/cbsdsh clean && make -DCBSDVERSION="${ncver}" -C ${distdir}/bin/cbsdsh
+			# force rebuild sqlscli too to avoid possible SQLite3 link error
+			/usr/bin/cc ${distdir}/misc/src/sqlcli.c -lsqlite3 -L/usr/local/lib -I/usr/local/include -o ${distdir}/misc/sqlcli
+			installne "-s -o ${cbsduser} -g ${cbsduser} -m 500" ${distdir}/misc/sqlcli ${miscdir}/sqlcli
+		fi
+	else
+		make -C ${distdir}/bin/cbsdsh clean && make -DCBSDVERSION="${ncver}" -C ${distdir}/bin/cbsdsh
+	fi
+
+	[ -d "${distdir}/bin/cbsd" ] && /bin/rm -rf "${distfir}/bin/cbsd"
+	[ -f "${distdir}/bin/cbsdsh/cbsd" ] && /usr/bin/install -s -o ${cbsduser} -g ${cbsduser} -m 500 ${distdir}/bin/cbsdsh/cbsd /usr/local/bin/cbsd
+
+	[ -f "/usr/local/bin/cbsd" ] && /bin/chmod 0500 /usr/local/bin/cbsd && /usr/sbin/chown ${cbsduser}:${cbsduser} /usr/local/bin/cbsd
+
+	#### CP SCRIPTS with override and executable
+	_dirhier="jailctl \
+		nodectl \
+		rc.d \
+		misc \
+		system \
+		tools"
+
+	for _d in ${_dirhier}; do
+		_ldir="${workdir}/${_d}"
+		_rdir="${distdir}/${_d}"
+		for _file in $( /usr/bin/find ${_rdir} -depth 1 -maxdepth 1 -type f -exec /usr/bin/basename {} \; ); do
+			installne "-o ${cbsduser} -g ${cbsduser} -m 555" ${_rdir}/${_file} ${_ldir}/${_file}
+		done
+	done
+
+	#### CP SCRIPTS with override and readonly
+	_dirhier="etc/defaults"
+
+	for _d in ${_dirhier}; do
+		_ldir="${workdir}/${_d}"
+		_rdir="${distdir}/${_d}"
+		for _file in $( /usr/bin/find ${_rdir} -depth 1 -maxdepth 1 -type f -exec /usr/bin/basename {} \; ); do
+			installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${_rdir}/${_file} ${_ldir}/${_file}
+		done
+	done
+
+	#### CP SCRIPTS without override
+	_dirhier="share \
+		share/helpers \
+		etc"
+
+	cat > ${etcdir}/cbsd_sudoers <<EOF
+Defaults     env_keep += "workdir DIALOG NOCOLOR"
+Cmnd_Alias   CBSD_CMD = ${sudoexecdir}/*,/usr/local/cbsd/sudoexec/*
+${cbsduser}   ALL=(ALL) NOPASSWD: CBSD_CMD
+EOF
+
+	for _d in ${_dirhier}; do
+		_ldir="${workdir}/${_d}"
+		_rdir="${distdir}/${_d}"
+		for _file in $( /usr/bin/find ${_rdir} -depth 1 -maxdepth 1 -type f -exec /usr/bin/basename {} \; ); do
+			[ ! -f "${_ldir}/${_file}" ] && /usr/bin/install -o ${cbsduser} -g ${cbsduser} -m 444 ${_rdir}/${_file} ${_ldir}/${_file}
+		done
+	done
+
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${globalconf} ${workdir}/cbsd.conf
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${globalconflua} ${workdir}/cbsd.lua
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/FreeBSD.subr ${workdir}/FreeBSD.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/DragonFly.subr ${workdir}/DragonFly.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/bhyve.subr ${workdir}/bhyve.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/zrep.subr ${workdir}/zrep.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/nc.subr ${workdir}/nc.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/nc.lua ${workdir}/nc.lua
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/zfs.subr ${workdir}/zfs.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/hammer.subr ${workdir}/hammer.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/tools.subr ${workdir}/tools.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/mdtools.subr ${workdir}/mdtools.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/freebsd_world.subr ${workdir}/freebsd_world.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/initenv.subr ${workdir}/initenv.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/ansiicolor.subr ${workdir}/ansiicolor.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/dialog.subr ${workdir}/dialog.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/nodes.subr ${workdir}/nodes.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/strings.subr ${workdir}/strings.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/rcconf.subr ${workdir}/rcconf.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/vnet.subr ${workdir}/vnet.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/vnet-tui.subr ${workdir}/vnet-tui.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/emulator.subr ${workdir}/emulator.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/rctl.subr ${workdir}/rctl.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/imghelper.subr ${workdir}/imghelper.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/jrctl.subr ${workdir}/jrctl.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/securecmd ${workdir}/securecmd
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/system.subr ${workdir}/system.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/jfs.subr ${workdir}/jfs.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/build.subr ${workdir}/build.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/universe.subr ${workdir}/universe.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/settings-tui.subr ${workdir}/settings-tui.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/distccache.subr ${workdir}/distccache.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/mailtools.subr ${workdir}/mailtools.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/fetch.subr ${workdir}/fetch.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/carp.subr ${workdir}/carp.subr
+
+	#here is file with overwriting
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/jail-arg ${sharedir}/jail-arg
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/rctl.conf ${sharedir}/rctl.conf
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/bhyve.conf ${sharedir}/bhyve.conf
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/zrep.conf ${sharedir}/zrep.conf
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/bhyvedsk.conf ${sharedir}/bhyvedsk.conf
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/bhyvenic.conf ${sharedir}/bhyvenic.conf
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/vnetnic.conf ${sharedir}/vnetnic.conf
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/jrctl-arg ${sharedir}/jrctl-arg
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-carp.schema ${sharedir}/local-carp.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/forms.schema ${sharedir}/forms.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/forms_version.schema ${sharedir}/forms_version.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-fwcounters.schema ${sharedir}/local-fwcounters.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-gw.schema ${sharedir}/local-gw.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-jails.schema ${sharedir}/local-jails.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-local.schema ${sharedir}/local-local.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-net.schema ${sharedir}/local-net.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-rctl.schema ${sharedir}/local-rctl.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-bhyve.schema ${sharedir}/local-bhyve.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-bhyvedsk.schema ${sharedir}/local-bhyvedsk.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-bhyvenic.schema ${sharedir}/local-bhyvenic.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-vnetnic.schema ${sharedir}/local-vnetnic.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-unconfigured.schema ${sharedir}/local-unconfigured.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/cbsdtaskd-taskd.schema ${sharedir}/cbsdtaskd-taskd.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/zrepd.schema ${sharedir}/zrepd.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/node-nodelist.schema ${sharedir}/node-nodelist.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/DragonFly-git_branches.conf ${sharedir}/DragonFly-git_branches.conf
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/FreeBSD-git_branches.conf ${sharedir}/FreeBSD-git_branches.conf
+
+	cp -Rn ${distdir}/etc/zonekeys ${etcdir}/ && chown -R ${cbsduser}:${cbsduser} ${etcdir}/zonekeys
+
+	if [ ! -f "/usr/local/etc/sudoers.d/cbsd_sudoers" ]; then
+		if getyesno "Shall i add cbsd user into /usr/local/etc/sudoers.d/cbsd_sudoers sudo file to obtian root privileges for the most cbsd commands?"; then
+			[ ! -d /usr/local/etc/sudoers.d ] && mkdir -p /usr/local/etc/sudoers.d
+			installne "-o root -g wheel -m 440" ${etcdir}/cbsd_sudoers /usr/local/etc/sudoers.d/cbsd_sudoers
+		fi
+	fi
+
+	#    [ -d ${sshdir} ] || mkdir -m 0700 ${sshdir}
+	#    [ -d "${sshdir}/sockets" ] || mkdir -m 0700 "${sshdir}/sockets"
+	[ -f "${sshdir}/config" ] || installne "-o ${cbsduser} -g ${cbsduser} -m 644" ${distdir}/.ssh/config ${sshdir}/config
+
+	# workaround for move jail-skel hier in cbsd 10.0.0
+	[ ! -d "${sharedir}/${platform}-jail-skel/etc" -a -d "${distdir}/share/${platform}-jail-skel" ] && mkdir -p ${sharedir}/${platform}-jail-skel && cp -a ${distdir}/share/${platform}-jail-skel/* ${sharedir}/${platform}-jail-skel/
+	[ -f "${sharedir}/${platform}-jail-skel/etc/master.passwd" ] && chmod 0600 ${sharedir}/${platform}-jail-skel/etc/master.passwd ${sharedir}/${platform}-jail-skel/etc/spwd.db
+
+	# workaround for move jail-skel hier in cbsd 10.0.0
+	[ ! -d "${sharedir}/${platform}-jail-vnet-skel/etc" -a -d "${distdir}/share/${platform}-jail-vnet-skel" ] && mkdir -p ${sharedir}/${platform}-jail-vnet-skel && cp -a ${distdir}/share/${platform}-jail-vnet-skel/* ${sharedir}/${platform}-jail-vnet-skel/
+	[ -f "${sharedir}/${platform}-jail-vnet-skel/etc/master.passwd" ] && chmod 0600 ${sharedir}/${platform}-jail-vnet-skel/etc/master.passwd ${sharedir}/${platform}-jail-vnet-skel/etc/spwd.db
+
+	cp -Rp ${distdir}/modules ${workdir}
+}
+
+phase3()
+{
+	local _hname _sname _namenotset
+
+	${ECHO} "${MAGENTA}[Stage 3: ${GREEN}local settings${MAGENTA}]${NORMAL}"
+	_namenotset=1
+
+	while [ ${_namenotset} ]; do
+		_hname=$( /bin/hostname )
+		_sname=$( /bin/hostname -s )
+
+		if [ -z "${_hname}" ]; then
+			${ECHO} "${MAGENTA}Hostname is empty. Please set this:${NORMAL}"
+			read p
+			if getyesno "I will use hostname: $p"; then
+				hostname $p
+				_hname=$( /bin/hostname )
+				_sname=$( /bin/hostname -s )
+			fi
+		fi
+
+		if [ "${_hname}" = "${_sname}" ]; then
+			${ECHO} "${GREEN}${_hname}${MAGENTA} - Wrong hostname. Full hostname must be not equal short hostname. Please set FQDN (${GREEN}${_hname}.my.domain${MAGENTA} for example):${NORMAL}"
+			read p
+			if getyesno "Shall i modify the /etc/rc.conf to sets new hostname value?: $p"; then
+				hostname $p
+				${SYSRC_CMD} -vf /etc/rc.conf hostname="${p}"
+			fi
+			else break;
+		fi
+	done
+}
+
+phase4()
+{
+	${ECHO} "${MAGENTA}[Stage 4: ${GREEN}update default skel resolv.conf${MAGENTA}]${NORMAL}"
+
+	for i in $(${ECHO} $jnameserver | /usr/bin/tr "," " "); do
+		if [ -f "${sharedir}/${platform}-jail-skel/etc/resolv.conf" ]; then
+			if [ $( /usr/bin/grep -c ${i} ${sharedir}/${platform}-jail-skel/etc/resolv.conf ) = 0 ]; then
+				TMPR="${ftmpdir}/resolv.$$"
+				# system nserver must be always last
+				${ECHO} "nameserver ${i}" > ${TMPR}
+				cat ${sharedir}/${platform}-jail-skel/etc/resolv.conf >> ${TMPR}
+				mv ${TMPR} ${sharedir}/${platform}-jail-skel/etc/resolv.conf
+			fi
+		fi
+	done
+}
+
+phase5()
+{
+	local _uncfg _uninit _checkme _myfs _ret _val
+
+	${ECHO} "${MAGENTA}[Stage 5: ${GREEN}freshing inventory${MAGENTA}]${NORMAL}"
+
+	[ -f "${inventory}" ] && . ${inventory}
+
+	#system information
+	. ${toolsdir}/sysinv
+
+	init_items_desc
+	init_items_default
+
+	if [ -z "${nodename}" ]; then
+		desc_question nodename
+		nodename=${answ}
+	fi
+
+	[ -z "${nodename}" ] && err 1 "nodename must be not empty"
+
+	[ ! -f "${nodenamefile}" ] && echo "${nodename}" > "${nodenamefile}"
+	[ ! -f "${dbdir}/nodes.sqlite" ] && /usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/nodes.sqlite ${distdir}/share/node-nodelist.schema
+
+	if [ ! -f "${dbdir}/inv.${nodename}.sqlite" ]; then
+		/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-unconfigured.schema
+		/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-local.schema
+		/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-jails.schema
+		$ECHO "${MAGENTA}Empty inventory database created: ${GREEN}${dbdir}/inv.${nodename}.sqlite${NORMAL}"
+		${miscdir}/sqlcli ${dbdir}/inv.${nodename}.sqlite "insert into local ( nodename ) VALUES ( \"${nodename}\" )"
+	fi
+
+	/bin/chmod 0660 ${dbdir}/inv.${nodename}.sqlite && /usr/sbin/chown ${cbsduser}:${cbsduser} ${dbdir}/inv.${nodename}.sqlite
+
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-local.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-carp.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/forms.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/forms_version.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-jails.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-rctl.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-bhyve.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-bhyvedsk.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-bhyvenic.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-vnetnic.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/cbsdtaskd.sqlite ${distdir}/share/cbsdtaskd-taskd.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/zrepd.sqlite ${distdir}/share/zrepd.schema
+
+	[ -f "${dbdir}/nodes.sqlite" ] && /usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/nodes.sqlite ${distdir}/share/node-nodelist.schema
+
+	/bin/ln -sfh ${dbdir}/inv.${nodename}.sqlite ${dbdir}/local.sqlite
+
+	_myfs="ufs"
+
+	if kldstat -qm zfs >/dev/null 2>&1; then
+		/sbin/zfs list ${workdir} > /dev/null 2>&1
+		[ $? -eq 0 ] && _myfs="zfs"
+	fi
+
+	if [ -x /sbin/hammer ]; then
+		/sbin/hammer info ${workdir} > /dev/null 2>&1
+		[ $? -eq 0 ] && _myfs="hammer"
+	fi
+
+	_uncfg=$( ${miscdir}/sqlcli ${dbdir}/local.sqlite SELECT items FROM unconfigured )
+
+	[ $? -ne 0 ] && err 1 "Error for unconfigured query"
+
+	for _checkme in ${_uncfg}; do
+		for _uninit in ${USERINI}; do
+			# skip for nodename which is already set
+			[ "${_uninit}" = "nodename" ] && continue
+			# temporary skip for mdtmp
+			[ "${_uninit}" = "mdtmp" ] && continue
+			if [ "${_uninit}" = "${_checkme}" ]; then
+				if [ "${_checkme}" = "zfsfeat" -a ${_myfs} != "zfs" ]; then
+					${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET zfsfeat=\"0\"
+					continue
+				fi
+				if [ "${_checkme}" = "hammerfeat" -a ${_myfs} != "hammer" ]; then
+					${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET hammer=\"0\"
+					continue
+				fi
+				desc_question ${_checkme}
+				[ $? -ne 0 ] && continue
+				# todo: input validation here
+				[ "${_checkme}" = "mdtmp" -a "$answ" = "1" ] && answ="8"
+				[ "${_checkme}" = "mdtmp" -a "$answ" = "2" ] && answ="0"
+				if [ -n "${answ}" ]; then
+					${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET ${_uninit}=\"${answ}\"
+					eval "${_uninit}=\"${answ}\"" 2>/dev/null
+				fi
+				[ "${_checkme}" = "nat_enable" ] && [ "${nat_enable}" != "0" ] && configure_nat
+			fi
+		done
+	done
+	# flush unconfigured marker
+	${miscdir}/sqlcli ${dbdir}/local.sqlite DELETE FROM unconfigured
+	# constants and static param. FIX ME
+	${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET repo=\"http://bsdstore.ru\"
+	${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET workdir=\"${workdir}\"
+	_ret=$( sysctl -n net.inet.ip.fw.enable 2>/dev/null )
+	if [ "${_ret}" = "1" ]; then
+		_ret=1
+	else
+		_ret=0
+	fi
+	${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET ipfw_enable=\"${_ret}\"
+	${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET fs=\"${_myfs}\"
+	${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET jail_interface=\"${nics}\"
+	${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET nodedescr=\"${nodedescr}\"
+	${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET nodename=\"${nodename}\"
+	${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET hostname=\"${hostname}\"
+	${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET vnet=\"${vnet}\"
+	${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET racct=\"${racct}\"
+	${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET platform=\"${platform}\"
+
+	local FILES="descr role domain notes location"
+	for i in $FILES; do
+		[ ! -f "${workdir}/${i}" ] && /usr/bin/touch ${workdir}/node.${i} && /usr/sbin/chown cbsd:cbsd ${workdir}/node.${i}
+	done
+
+	/usr/local/bin/cbsd netinv
+}
+
+phase6()
+{
+	. ${workdir}/${localcbsdconffile}
+	${ECHO} "${MAGENTA}[Stage 6: ${GREEN}authentication keys${MAGENTA}]${NORMAL}"
+
+	install_sshkey
+}
+
+phase7()
+{
+	local SECCMD _i _cmd _lnk _dst _modulename _moduledir
+	${ECHO} "${MAGENTA}[Stage 7: ${GREEN}modules${MAGENTA}]${NORMAL}"
+
+	[ ! -f "${etcdir}/modules.conf" ] && return 0
+
+	# Install module
+	for _i in $( /bin/cat ${etcdir}/modules.conf ); do
+		[ ! -f "${moduledir}/${_i}/securecmd" ] && continue
+		. ${moduledir}/${_i}/securecmd
+		for _cmd in ${SECCMD}; do
+			if [ ! -h "${moduledir}/${_cmd}" ]; then
+				/bin/ln -sfh ${moduledir}/${_i}/${_cmd} ${moduledir}/${_cmd}
+				${ECHO} "${MAGENTA}Installing module ${_i} cmd: ${GREEN}${_cmd}${NORMAL}"
+			fi
+		done
+	done
+
+	# Deinstall module
+	for _lnk in $( /usr/bin/find ${moduledir} -type l -depth 1 -maxdepth 1 ); do
+		_dst=$( /usr/bin/readlink ${_lnk} )
+		_dst=$( /usr/bin/dirname ${_dst} )
+		#append slash for next excluding in _modulename
+		_moduledir="${moduledir}/"
+		_modulename="${_dst#$_moduledir}"
+		
+		/usr/bin/grep "^${_modulename}" ${etcdir}/modules.conf >/dev/null 2>&1
+		if [ $? -eq 1 ]; then
+			${ECHO} "${MAGENTA}Removing module ${_modulename} cmd: ${GREEN}${_dst}${NORMAL}"
+			/bin/rm -f ${_lnk}
+		fi
+	done
+}
+
+phase8()
+{
+	local OLD_FILES OLD_DIRS
+	. ${distdir}/ObsoleteFiles
+
+	# append for modules Obsolete cmd part
+	if [ -f "${etcdir}/modules.conf" ]; then
+		for i in $( /bin/cat ${etcdir}/modules.conf ); do
+			[ ! -f "${moduledir}/${i}/ObsoleteFiles" ] && continue
+			. ${moduledir}/${i}/ObsoleteFiles
+		done
+	fi
+
+	${ECHO} "${MAGENTA}[Stage 9: ${GREEN}cleanup${MAGENTA}]${NORMAL}"
+	$ECHO "${MAGENTA} * Remove obsolete files..."
+
+	for i in $OLD_FILES; do
+		[ -f "${workdir}/${i}" -o -h "${workdir}/${i}" ] && ${ECHO} "\t${MAGENTA}Removing obsolete file: ${GREEN}${workdir}/${i}${NORMAL}" && /bin/rm -f ${workdir}/${i}
+	done
+
+	for i in $OLD_DIRS; do
+		[ -d "${workdir}/${i}" -o -h "${workdir}/${i}" ] && ${ECHO} "\t${MAGENTA}Removing obsolete dir: ${GREEN}${workdir}/${i}${NORMAL}" && /bin/rmdir ${workdir}/${i}
+	done
+	printf "${NORMAL}"
+}
+
+post_message()
+{
+	[ ${first_init} -eq 0 ] && return 0
+	${ECHO} "  ${GREEN}First CBSD initialization complete."
+	${ECHO}
+	${ECHO} "  Now your can run:"
+	${ECHO} "  ${NORMAL}${BOLD}service cbsdd start${NORMAL}${GREEN}"
+	${ECHO} "  to run CBSD services."
+	${ECHO}
+	${ECHO} "  For change initenv settings in next time, use:"
+	${ECHO} "  ${NORMAL}${BOLD}cbsd initenv-tui${NORMAL}${GREEN}"
+	${ECHO}
+	${ECHO} "  Also don't forget to execute:"
+	${ECHO} "  ${NORMAL}${BOLD}cbsd initenv${NORMAL}${GREEN}"
+	${ECHO} "  every time when you upgrade CBSD version.${NORMAL}"
+	${ECHO}
+}
+
+############ start locking section #############
+start()
+{
+	if [ -n "${INITCFG}" ]; then
+		inter=0
+		ALWAYS_YES=1
+		. "${INITCFG}" 2>/dev/null
+	fi
+
+	ECHO="echo -e"
+	if [ -z "${workdir}" ]; then
+		. /etc/rc.conf
+		if [ -n "${cbsd_workdir}" ]; then
+			workdir="${cbsd_workdir}"
+		else
+			workdir="/usr/jails"
+		fi
+	fi
+	. ${globalconf}
+	. ${distdir}/nc.subr
+	. ${distdir}/tools.subr
+	. ${distdir}/initenv.subr
+	. ${distdir}/ansiicolor.subr
+
+	if [ "${globalconf}" = "${localcbsdconf}" ]; then
+		${ECHO} "${MAGENTA}Please use difference path for workdir. Not ${GREEN}${distdir}${NORMAL}"
+		exit 1
+	fi
+
+	/usr/bin/more << EOF_HEADER
+-------[${product} v.${myversion}]-------
+ This is install/upgrade scripts for ${product}.
+ Don't forget to backup.
+-----------------------------
+EOF_HEADER
+
+	if [ "${inter}" != "0" ]; then
+		getyesno "Do you want prepare or upgrade hier environment for ${product} now?" || exit 0
+	fi
+	${ECHO} "${MAGENTA}>>> Installing or upgrading${NORMAL}"
+	phase0
+	phase1
+	phase2
+	phase3
+	phase4
+	phase5
+	# Inventory area
+	phase6
+	#Finnaly export new inventory from SQLite data for ASCii
+	update_hwinfo
+	env sqlcolnames="1" ${miscdir}/sqlcli ${dbdir}/local.sqlite "SELECT * FROM local" > ${inventory}
+	# end of Inventory
+	phase7
+	phase8
+
+	configure_rsync
+
+	if [ $( /usr/bin/grep ^cbsdd_enable= /etc/rc.conf|/usr/bin/wc -l ) = 0 ]; then
+		getyesno "Shall i modify the /etc/rc.conf to sets cbsdd_enable=YES ?" && ${SYSRC_CMD} -vf /etc/rc.conf cbsdd_enable=YES
+	fi
+
+	baseelf=$( ${miscdir}/elf_tables --ver /bin/sh 2>/dev/null )
+
+	if [ ${baseelf} -lt 1000510 ]; then
+		# only for FreeBSD 10.0, not for 10.0+
+		if [ $( /usr/bin/grep ^devfs_load_rulesets= /etc/rc.conf|/usr/bin/wc -l ) = 0 ]; then
+			#we need initialization of ruleset for proper view on dev in jail
+			if getyesno "Shall i modify the /etc/rc.conf to sets devfs_load_rulesets=YES?"; then
+				${SYSRC_CMD} -vf /etc/rc.conf devfs_load_rulesets=YES
+				/usr/sbin/service devfs restart
+			fi
+		fi
+	fi
+
+	. /etc/rc.conf
+	if [ "${cbsd_workdir}" != "${workdir}" ]; then
+		getyesno "Shall i modify the /etc/rc.conf to sets cbsd_workdir=\"${workdir}\"?: $p" && ${SYSRC_CMD} -vf /etc/rc.conf cbsd_workdir="${workdir}"
+	fi
+
+	if [ $( /usr/bin/grep ^rcshutdown_timeout= /etc/rc.conf|/usr/bin/wc -l ) = 0 ]; then
+		getyesno "Shall i modify the /etc/rc.conf to sets rcshutdown_timeout=\"900\"?" && ${SYSRC_CMD} -vf /etc/rc.conf rcshutdown_timeout="900"
+	fi
+
+	if [ $( /usr/bin/grep ^sshd_flags= /etc/rc.conf|/usr/bin/wc -l ) = 0 ]; then
+		getyesno "Shall i modify default SSH daemon port from 22 to 22222 on this host via /etc/rc.conf and sshd_flags=\"-oPort=22222\" which is default for cbsd?" && ${SYSRC_CMD} -vf /etc/rc.conf sshd_flags="-oPort=22222"
+	fi
+
+	phaseX
+
+	hash -r
+	${ECHO} "${MAGENTA}>>> Done${NORMAL}"
+	post_message
+	exit 0
+}
+
+### MAIN ###
+if [ $# -ne 1 ]; then
+	if [ "${inter}" = "0" ]; then
+		/usr/bin/lockf -t0 -s ${MYLOCK} env INITCFG="${INITCFG}" $0 inter=0 start
+	else
+		/usr/bin/lockf -t0 -s ${MYLOCK} env INITCFG="${INITCFG}" $0 start
+	fi
+fi
+
+case "$1" in
+	start)
+		start
+	;;
+esac

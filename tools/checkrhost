@@ -1,0 +1,16 @@
+#!/bin/sh
+globalconf="${workdir}/cbsd.conf";
+MYARG="ip cmd"
+MYOPTARG=""
+MYDESC="Check availability of remote node"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+init $*
+
+LOCALKEY="${rsshdir}/${ip}.id_rsa"
+[ -f ${LOCALKEY} ] || err 1 "No Rsa key"
+/usr/bin/ssh -o "StrictHostKeyChecking no" -q -i ${LOCALKEY} ${cbsduser}@${ip} -C ${cmd}

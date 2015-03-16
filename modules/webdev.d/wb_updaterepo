@@ -1,0 +1,188 @@
+#!/usr/local/bin/lua52
+-- fetch "http://pkg.FreeBSD.org/freebsd:11:x86:64/latest/packagesite.txz" to /root/modules
+function split(str, pat)
+	local t = {}  -- NOTE: use {n = 0} in Lua-5.0
+	local fpat = "(.-)" .. pat
+	local last_end = 1
+	local s, e, cap = str:find(fpat, 1)
+
+	while s do
+		if s ~= 1 or cap ~= "" then
+			table.insert(t,cap)
+		end
+		last_end = e+1
+		s, e, cap = str:find(fpat, last_end)
+	end
+
+	if last_end <= #str then
+		cap = str:sub(last_end)
+		table.insert(t, cap)
+	end
+	return t
+end
+
+function split_path(str)
+	return split(str,'[,]+')
+end
+
+
+function initsql()
+	local handle = io.popen("/usr/local/bin/sqlite3 /var/db/webdev/webdev.sqlite 'DROP TABLE IF EXISTS packages'")
+	local result = handle:read("*a")
+	handle:close()
+
+	handle = io.popen("/usr/local/bin/sqlite3 /var/db/webdev/webdev.sqlite 'CREATE TABLE packages ( \
+	id INTEGER PRIMARY KEY AUTOINCREMENT, \
+	name TEXT NOT NULL, \
+	packagename TEXT NOT NULL, \
+	version TEXT NOT NULL, \
+	comment TEXT NOT NULL, \
+	flatsize INTEGER NOT NULL, \
+	helpername TEXT DEFAULT NULL);'")
+
+	result = handle:read("*a")
+	handle:close()
+end
+
+
+function tosql(name,packagename,version,comment,flatsize, helpername)
+	local str="INSERT INTO packages ( name, packagename, version, comment, flatsize, helpername ) VALUES ( \"" .. name .. "\", \"" .. packagename .. "\", \"" .. version .. "\", \"" .. comment .. "\", \"" .. flatsize .. "\", \"" .. helpername .. "\")"
+
+	local handle = io.popen("/usr/local/bin/sqlite3 /var/db/webdev/webdev.sqlite '" .. str .. "'")
+	local result = handle:read("*a")
+	handle:close()
+end
+
+
+
+-- MAIN
+if ( arg[1]=="--help" )  then
+	print ( "HELP ME" )
+	os.exit(0)
+end
+
+initsql()
+a="/root/modules/packagesite.yaml"
+file = assert(io.open(a, "r"))
+t = {}
+
+-- alias schema:
+-- WEBDEV module name | original name | helpername if exist
+--
+aliases = {}
+aliases = { "PHP:php56:phpcfg" }
+table.insert(aliases, "Nginx:nginx-devel:nginxcfg" )
+table.insert(aliases, "MariaDB:mariadb100-server:NULL" )
+table.insert(aliases, "PortgresqlDB:postgresql94-server:NULL" )
+table.insert(aliases, "Redis:redis:NULL" )
+table.insert(aliases, "Memcached:memcached:NULL" )
+
+table.insert(aliases, "Php-dba:php56-dba:NULL" )
+table.insert(aliases, "Php-pdo_mysql:php56-pdo_mysql:NULL" )
+table.insert(aliases, "Php-pdo_pgsql:php56-pdo_pgsql:NULL" )
+table.insert(aliases, "Php-pdo_sqlite:php56-pdo_sqlite:NULL" )
+table.insert(aliases, "Php-pgsql:php56-pgsql:NULL" )
+table.insert(aliases, "Php-sqlite3:php56-sqlite3:NULL" )
+table.insert(aliases, "Php-gettext:php56-gettext:NULL" )
+table.insert(aliases, "Php-pcntl:php56-pcntl:NULL" )
+table.insert(aliases, "Php-readline:php56-readline:NULL" )
+table.insert(aliases, "Php-shmop:php56-shmop:NULL" )
+table.insert(aliases, "Php-sysvmsg:php56-sysvmsg:NULL" )
+table.insert(aliases, "Php-sysvsem:php56-sysvsem:NULL" )
+table.insert(aliases, "Php-sysvshm:php56-sysvshm:NULL" )
+table.insert(aliases, "Php-tokenizer:php56-tokenizer:NULL" )
+table.insert(aliases, "Php-curl:php56-curl:NULL" )
+table.insert(aliases, "Php-ftp:php56-ftp:NULL" )
+table.insert(aliases, "Php-exif:php56-exif:NULL" )
+table.insert(aliases, "Php-imap:php56-imap:NULL" )
+table.insert(aliases, "Php-bcmath:php56-bcmath:NULL" )
+table.insert(aliases, "Php-gmp:php56-gmp:NULL" )
+table.insert(aliases, "Php-calendar:php56-calendar:NULL" )
+table.insert(aliases, "Php-ldap:php56-ldap:NULL" )
+table.insert(aliases, "Php-soap:php56-soap:NULL" )
+table.insert(aliases, "Php-fileinfo:php56-fileinfo:NULL" )
+table.insert(aliases, "Php-posix:php56-posix:NULL" )
+table.insert(aliases, "Php-simplexmls:php56-simplexml:NULL" )
+table.insert(aliases, "Php-wddx:php56-wddx:NULL" )
+table.insert(aliases, "Php-xmlreader:php56-xmlreader:NULL" )
+table.insert(aliases, "Php-xmlwriter:php56-xmlwriter:NULL" )
+table.insert(aliases, "Php-xsl:php56-xsl:NULL" )
+table.insert(aliases, "Php-opcache:php56-opcache:NULL" )
+table.insert(aliases, "Php-tidy:php56-tidy:NULL" )
+table.insert(aliases, "Php-redis:php5-redis:NULL" )
+table.insert(aliases, "Php-xdebug:php-xdebug:NULL" )
+
+table.insert(aliases, "Pecl-memcache:pecl-memcache:NULL" )
+table.insert(aliases, "Pecl-memcached:pecl-memcached:NULL" )
+table.insert(aliases, "Pecl-mongo:pecl-mongo:NULL" )
+table.insert(aliases, "Pecl-intl:pecl-intl:NULL" )
+table.insert(aliases, "Pecl-imagick:pecl-imagick:NULL" )
+table.insert(aliases, "Pecl-geoip:pecl-geoip:NULL" )
+table.insert(aliases, "Pecl-http:pecl-http:NULL" )
+table.insert(aliases, "Phpmyadmin:phpmyadmin:NULL" )
+table.insert(aliases, "Git:git:NULL" )
+table.insert(aliases, "Subversion:subversion:NULL" )
+table.insert(aliases, "Rsync:rsync:NULL" )
+table.insert(aliases, "Node:node:NULL" )
+--
+
+line = file:read()
+
+for line in file:lines() do
+	parts = split_path(line)
+	i = 1
+	version = 0
+	packagename = nil
+	comment = nil
+	origin = nil
+	flatsize = 0
+
+	while parts[i] do
+		for a , b in string.gmatch(parts[i], "\"(%w+)\":(.+)") do
+			if a == "name" and packagename == nil then
+				packagename=string.gsub(b,"\"", "")
+			elseif a == "origin" and origin == nil then
+				origin = string.gsub(b,"\"", "")
+			elseif a == "comment" and comment == nil then
+				comment = string.gsub(b,"\"", "")
+			elseif a == "version" and version == 0 then
+				version = string.gsub(b,"\"", "")
+			elseif a == "flatsize" and flatsize == 0 then
+				flatsize = string.gsub(b,"\"", "")
+			end
+		end
+		i = i + 1
+	end
+
+	if packagename and version and comment then
+		for k,value in pairs(aliases) do
+			start=0
+			str = string.gsub(value,":", " ")
+--			for module in string.gmatch(str, "(%S+)") do
+			for module in string.gmatch(str, "(%S+)") do
+
+				helpername = ""
+
+				if origin == "www/nginx-devel" then
+					helpername = "nginxcfg"
+				end
+
+				if origin == "lang/php56" then
+					helpername = "phpcfg"
+				end
+
+
+				if start == 0 then
+					modname=module
+					start=1
+				end
+
+				if packagename == module then
+					tosql(modname,origin,version,comment,flatsize, helpername)
+				end
+			end
+		end
+	end
+end
+
+file:close()

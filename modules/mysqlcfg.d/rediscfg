@@ -1,0 +1,30 @@
+#!/bin/sh
+#v10.0.2
+globalconf="${workdir}/cbsd.conf";
+CBSDMODULE="helpers"
+MYARG=""
+MYOPTARG="jname path mode arg"
+MYDESC="cbsd configuration script"
+ADDHELP="additional info\n"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+init $*
+
+#defines
+_MYDIR=$(dirname `realpath $0`)
+
+#trap "INSTALLLOOP=0 ; clear; echo; echo \"Exit to shell. To return into bootstrap script, please type: cbsd wb_installer\";  echo" HUP INT ABRT BUS TERM EXIT
+
+### MAIN Route ###
+set -e
+    . ${_MYDIR}/rediscfg.subr
+set +e
+
+[ -z "${jname}" -a -z "${path}" ] && err 1 "${MAGENTA}path= ot jname= is mandatory${NORMAL}"
+
+grep -v "^#" /usr/local/etc/redis.conf | /usr/bin/awk '/client-output-buffer-limit/{print substr($0, index($0,$3)) }'
+

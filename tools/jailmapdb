@@ -1,0 +1,67 @@
+#!/bin/sh
+#v10.0.2
+globalconf="${workdir}/cbsd.conf";
+MYARG=""
+MYOPTARG="jname update quiet all node"
+MYDESC="Return or update node for jail map"
+ADDHELP="jname1 [jname2] - return node array\n\
+update=1 for re-generate file\n\
+quiet=1 - no jailname before node ip\n\
+all=1 - list all jails\n\
+node= only for this node\n"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+init $*
+
+update()
+{
+	local _tempmap
+
+	_tempmap="${ftmpdir}/jmap.$$"
+	trap "/bin/rm -f ${_tempmap}" 0 1 2
+
+	# Get all jaillist from node
+	# uncoment for jail with status On only:
+	#   env NOCOLOR=1 cbsd jls header=0 alljails=1 shownode=1 | /usr/bin/awk '/On$/{printf $1" "$2"\n"}'| sort -u > ${_tempmap}
+	env NOCOLOR=1 cbsd jls header=0 alljails=1 shownode=1 | /usr/bin/awk '{printf $1" "$2"\n"}'| /usr/bin/sort -u > ${_tempmap}
+
+	truncate -s0 ${jailmapdb}
+	# and sort them into par=val form
+	/bin/cat ${_tempmap}|while read _node _jail; do
+		A=`/usr/bin/grep " ${_jail}$" ${_tempmap}|/usr/bin/awk '{printf $1" "'}`
+		echo ${_jail}=\"$A\" >>${jailmapdb}
+		/usr/bin/sed -i '' 's/ \"/\"/' ${jailmapdb}
+	done
+
+	/usr/bin/sort -u ${jailmapdb} > ${_tempmap} && mv ${_tempmap} ${jailmapdb}
+	exit 0
+}
+
+[ -z "$1" ] && err 1 "Give me args"
+[ "${update}" = "1" ] && update
+[ -f "${jailmapdb}" ] || err 1 "No map file, run update=1 first"
+
+if [ "$all" = "1" ]; then
+	if [ "${quiet}" = "1" ]; then
+		/usr/bin/cut -d "=" -f1 ${jailmapdb}
+	else
+		/bin/cat ${jailmapdb}
+	fi
+	exit 0
+fi
+
+. ${jailmapdb} 2>/dev/null
+
+for i in $*; do
+	eval node=\"\$${i}\"
+	[ -z "${node}" -o "${i}" = "quiet=1" ] && break
+	if [ "${quiet}" = "1" ]; then
+		echo "${node}"
+	else
+		echo "$i: ${node}"
+	fi
+done

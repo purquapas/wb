@@ -1,0 +1,36 @@
+#!/bin/sh
+#v10.0.4
+globalconf="${workdir}/cbsd.conf";
+MYARG=""
+MYOPTARG="ver arch basename stable"
+MYDESC="Remove src-dir"
+ADDHELP="ver=9_1 for 9.1 ver=. for current.\n\
+stable=1 for RELENG_X\n"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+init $*
+over="${ver}"
+oarch="${arch}"
+
+. ${buildconf}
+readconf buildworld.conf
+. ${workdir}/universe.subr
+
+init_distcc
+init_notify
+init_target_arch
+init_srcdir
+init_supported_arch
+init_make_flags
+
+LOCKFILE=${ftmpdir}/src_$( /sbin/md5 -qs ${SRC_DIR} ).lock
+makelock ${LOCKFILE}
+
+[ -d "${SRC_DIR}" ] && /bin/rm -rf ${SRC_DIR}
+[ -d "${srcdir}/src_${ver}" ] && /bin/rmdir ${srcdir}/src_${ver} > /dev/null 2>&1
+
+

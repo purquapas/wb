@@ -1,0 +1,13 @@
+# List of the allowed cbsd commands
+SECCMD="\
+${SECCMD}
+wb_usercfg \
+wb_get_modules \
+wb_rediscfg \
+wb_phpcfg \
+wb_updaterepo \
+wb_netcfg \
+tzcfg \
+wb_zfs_install \
+wb_updaterepo
+"

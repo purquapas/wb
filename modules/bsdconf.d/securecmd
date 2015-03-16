@@ -1,0 +1,15 @@
+# List of the allowed cbsd commands
+SECCMD="\
+${SECCMD}
+tzsetup \
+ssh \
+ftp \
+adduser \
+passwd \
+service \
+sysrc \
+userlist \
+grouplist \
+adduser-tui \
+pw \
+"

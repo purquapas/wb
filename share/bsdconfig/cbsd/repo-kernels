@@ -1,0 +1,225 @@
+#!/usr/local/bin/cbsd
+############################################################ INCLUDES
+
+BSDCFG_SHARE="/usr/share/bsdconfig"
+. $BSDCFG_SHARE/common.subr || exit 1
+f_dprintf "%s: loading includes..." "$0"
+f_include $BSDCFG_SHARE/dialog.subr
+f_include $BSDCFG_SHARE/mustberoot.subr
+
+BSDCFG_LIBE="/usr/local/libexec/bsdconfig" APP_DIR="cbsd"
+f_include_lang $BSDCFG_LIBE/$APP_DIR/include/messages-repo.subr
+
+ipgm=$( f_index_menusel_keyword $BSDCFG_LIBE/$APP_DIR/INDEX "$pgm" )
+[ $? -eq $SUCCESS -a "$ipgm" ] && pgm="$ipgm"
+
+. ${subr}
+. ${strings}
+. ${tools}
+. ${nodes}
+
+############################################################ FUNCTIONS
+
+# dialog_menu_main
+#
+# Display the dialog(1)-based application main menu.
+#
+dialog_menu_main()
+{
+	local title="$DIALOG_TITLE"
+	local btitle="$DIALOG_BACKTITLE"
+	local prompt=""
+	local menu_list=
+	local defaultitem=
+	local hline="Hit ENTER for SELECT"
+	local prompt="'I:number' flags means that the kernel is already installed. \n number is indicated version. Anyway you can upgrade it. \n'*' means is native for this node"
+	local kversion
+
+	local f_dialog_title=" CBSD FreeBSD Kernel Repository "
+
+	for i in $( seq 1 255 ); do
+		kernel_name=
+		eval kernel_name="\$kernel${i}_name"
+		[ -z "${kernel_name}" ] && break
+		kernel_ver=
+		kernel_arch=
+		eval kernel_ver="\$kernel${i}_ver"
+		eval kernel_arch="\$kernel${i}_arch"
+		mark=
+		eval mark=\$selected_kernel${i}
+		kernel_installed=
+		if [ -f "${basejaildir}/${kernel_name}/boot/kernel/kernel" ]; then
+			kversion=$( env ROOT=${basejaildir}/${kernel_name} /bin/freebsd-version -k )
+			kernel_installed="I:${kversion}"
+		fi
+		
+		[ "${kernel_ver}" = "${native_ver}" -a "${kernel_arch}" = "${native_arch}" ] && kernel_installed="${kernel_installed} *"
+		
+		[ -z "${mark}" ] && mark=" "
+		menu_list="$menu_list '${i} ${kernel_name}'	'[${mark}] ${kernel_installed}'"
+	done
+
+	menu_list="$menu_list '-'	''"
+	menu_list="$menu_list 'Download'	''"
+
+	local height width rows
+	eval f_dialog_menu_size height width rows \
+		\"\$DIALOG_TITLE\"     \
+		\"\$DIALOG_BACKTITLE\" \
+		\"\$prompt\"           \
+		\"\$hline\"            \
+		$menu_list
+
+	# Obtain default-item from previously stored selection
+	f_dialog_default_fetch defaultitem
+
+	local menu_choice
+	menu_choice=$( eval $DIALOG \
+		--title \"\$DIALOG_TITLE\"         \
+		--backtitle \"\$DIALOG_BACKTITLE\" \
+		--hline \"\$hline\"                \
+		--ok-label \"\$msg_ok\"            \
+		--cancel-label \"\$msg_cancel\"    \
+		--default-item \"\$defaultitem\"   \
+		--menu \"\$prompt\"                \
+		$height $width $rows               \
+		$menu_list                         \
+		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
+	)
+
+	local retval=$?
+	f_dialog_data_sanitize menu_choice
+	f_dialog_menutag_store "$menu_choice"
+
+	# Only update default-item on success
+	[ $retval -eq $DIALOG_OK ] && f_dialog_default_store "$menu_choice"
+
+	return $DIALOG_OK
+}
+
+
+download_kernels()
+{
+	local _fetch_kernels=
+	local mark
+	local i
+	local _res
+
+	for i in $( seq 1 255 ); do
+		eval kernel_name="\$kernel${i}_name"
+		[ -z "${kernel_name}" ] && break
+		eval mark=\$selected_kernel${i}
+		[ "${mark}" = "X" ] && _fetch_kernels="${_fetch_kernels} ${kernel_name}"
+	done
+
+	[ -z "${_fetch_kernels}" ] && return 0
+
+	for i in ${_fetch_kernels}; do
+		eval $( echo "${i}" |/usr/bin/tr  "_" " "|while read _kernel _name _arch _ver; do
+			echo "rarch=\"${_arch}\""
+			echo "rver=\"${_ver}\""
+			_res=$( echo "${_ver}" |/usr/bin/grep -q '\.' )
+			stable=$?
+			echo "stable=\"${stable}\""
+			echo "name=\"${_name}\""
+		done )
+		echo
+		echo "exec: cbsd repo action=get sources=kernel name=${name} ver=${rver} stable=${stable} arch=${rarch}"
+
+		export DIALOG="${DIALOG}"
+		# return stdout
+		exec 3>&-
+		repo action=get sources=kernel name=${name} ver=${rver} stable=${stable} arch=${rarch} mode=upgrade
+		eval exec $TERMINAL_STDOUT_PASSTHRU\>\&1
+		eval exec $TERMINAL_STDERR_PASSTHRU\>\&2
+	done
+	echo "Press a key..."
+	read p
+}
+
+
+############################################################ MAIN
+export NOCOLOR=1
+
+# Incorporate rc-file if it exists
+[ -f "$HOME/.bsdconfigrc" ] && f_include "$HOME/.bsdconfigrc"
+
+#
+# Process command-line arguments
+#
+while getopts h$GETOPTS_STDARGS flag; do
+	case "$flag" in
+	h|\?) f_usage $BSDCFG_LIBE/$APP_DIR/USAGE "PROGRAM_NAME" "$pgm" ;;
+	esac
+done
+shift $(( $OPTIND - 1 ))
+
+#
+# Initialize
+#
+f_dialog_title " $msg_repo_kernels "
+f_dialog_backtitle "${ipgm:+bsdconfig }$pgm"
+f_mustberoot_init
+
+kernellist=$( mktemp )
+f_dialog_info "Obtain index files from ${repo}. Please wait..."
+trap "rm -f ${kernellist}" HUP INT ABRT BUS TERM EXIT
+res=$( 2>/dev/null repo quiet=1 action=list sources=kernel ver=any arch=any > ${kernellist} )
+
+i=1
+
+eval $( /bin/cat ${kernellist} |while read _line; do
+	echo "kernel${i}_name=\"${_line}\""
+
+	echo "${_line}" |/usr/bin/tr "_" " " |while read _kernel _name _arch _ver; do
+		echo "kernel${i}_arch=\"${_arch}\""
+		echo "kernel${i}_ver=\"${_ver}\""
+	done
+
+	i=$(( i + 1 ))
+done )
+
+#
+# Loop over the main menu until we've accomplished what we came here to do
+#
+while :; do
+	dialog_menu_main || break
+	f_dialog_menutag_fetch mtag
+
+	[ -z "${mtag}" ] && exit $SUCCESS
+
+	command=
+
+	case "$mtag" in
+		?" $msg_exit") break ;;
+		"Download")
+				download_kernels
+				exit 0
+				;;
+		"-")
+				continue
+				;;
+		*)
+			index=${mtag%% *}
+			kernel=${mtag##* }
+			eval mark=\$selected_kernel${index}
+			if [ "${mark}" = "X" ];then
+				eval "selected_kernel${index}=\" \""
+			else
+				eval "selected_kernel${index}=\"X\""
+			fi
+			continue
+			;;
+	esac
+
+	if [ "$command" ]; then
+		$BSDCFG_LIBE/$APP_DIR/$command ${USE_XDIALOG:+-X}
+	fi
+
+done
+
+return $SUCCESS
+
+################################################################################
+# END
+################################################################################

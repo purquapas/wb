@@ -1,0 +1,124 @@
+if [ ! "$_CBSD_NODES_SUBR" ]; then
+_CBSD_NODES_SUBR=1
+###
+
+#update idle in SQLite for $1 nodename
+idle_update()
+{
+	cbsdsql nodes "UPDATE nodelist SET idle=datetime('now','localtime') WHERE nodename=\"${1}\""
+}
+
+# check age of ssh mux lock. If ctime greater than 1 minutes
+# then out "Connected (uptime min)" and return 0
+# else - out "Offline" and return 1
+# required included inventory for $sqlreplica
+# sample:
+# if check_locktime /usr/jails/ftmp/shmux_199.48.133.74.lock >/dev/null 2>&1; then
+#    echo "OK"
+#  fi
+check_locktime()
+{
+	#always return online if no shmux activated
+	[ "${sqlreplica}" = "0" ] && return 0
+
+	local cur_time=$( /bin/date +%s )
+	local difftime
+
+	[ ! -f "${1}" ] && return 1
+
+	eval $( /usr/bin/stat -s ${1} )
+	difftime=$(( ( cur_time - st_mtime ) / 60 ))
+
+	if [ $difftime -lt 1 ]; then
+		return 1
+	else
+		echo "$difftime"
+		return 0
+	fi
+}
+
+
+# _idle must be set
+conv_idle()
+{
+	local _res
+
+	_nodestatus="Disconnected" # default state
+
+	[ -z "${_idle}" ] && return 1
+
+	if [ ${sqlreplica} -eq 1 ]; then
+		_res=$( check_locktime ${ftmpdir}/shmux_${_ip}.lock )
+		[ $? -eq 0 ] && _nodestatus="Connected" && _idle=${_res} && return 0
+	fi
+
+	idle_time=$( /bin/date -j -f "%Y-%m-%d %H:%M:%S" "${_idle}" "+%s" )
+
+	_res=$(( ( curtime - idle_time ) / 60 ))
+	_idle="${_res}"
+}
+
+# return $node as selected node by id or name from list
+# -s "is subject for list"
+# -a [0|1] show only active (status=on jail): 0, or all: 1
+select_node_by_list()
+{
+	local _res _id i=0
+	local subject="List of online nodes:"
+	local active="0" # only online
+
+	local sqldelimer=" "
+
+	while getopts "a:r:s:e:" opt; do
+		case "$opt" in
+			a) active="${OPTARG}" ;;
+			s) subject="${OPTARG}" ;;
+		esac
+		shift $(($OPTIND - 1))
+	done
+
+	eval $( cbsdsql nodes SELECT nodename,ip FROM nodelist |while read nodename ip status; do
+		mystatus=
+
+		if ! check_locktime ${ftmpdir}/shmux_${ip}.lock >/dev/null 2>&1; then
+			mystatus="1"   # Offline
+		else
+			mystatus="0"   # Online
+		fi
+
+		[ "${mystatus}" != "${active}" ] && continue
+
+		echo "local nodename${i}=\"${nodename}\"
+		echo "local ip${i}=\"${ip}\"
+
+		i=$(( i + 1 ))
+	done )
+
+	for i in $( /usr/bin/seq 0 255 ); do
+		eval _mynode="\$nodename${i}"
+		[ -z "${_mynode}" ] && break
+		[ "${_mynode}" = "${nodename}" ] && _mynode="${BOLD}local${NORMAL}"
+		eval _ip="\$ip${i}"
+		[ -z "${_ip}" ] && break;
+
+		[ $i -eq 0 ] && ${ECHO} "${MAGENTA}${subject}${NORMAL}"
+		${ECHO} "${BOLD}${i} .. ${GREEN}${_mynode} ${NORMAL}on ${GREEN}${_ip}${NORMAL}"
+	done
+
+	[ $i -eq 0 ] && err 1 "${MAGENTA}No node found${NORMAL}"
+	echo
+	printf "${BOLD}Enter id 0-${i} or node name:${NORMAL} "
+	set -e
+	read _id
+	set +e
+	if ! is_number ${_id}; then
+		eval node="\$nodename${_id}"
+	else
+		eval node="${_id}"
+	fi
+
+	remote=2 # for autoremote
+}
+
+###
+fi

@@ -1,0 +1,103 @@
+#!/bin/sh
+#v10.0.3
+# via environment:
+# setenv ou "ou=People"
+# setenv dc "dc=example,dc=com"
+# setenv uri "192.168.1.125"
+# schema ?
+globalconf="${workdir}/cbsd.conf"
+CBSDMODULE="helpers"
+MYARG="mode jname"
+MYOPTARG="uri ou dc"
+MYDESC="Modify /etc/pam.d/sshd, ldap.conf and nss_ldap.conf in jail for your LDAP service"
+ADDHELP="mode= install,deinstall,modify\n"
+
+MYNAME="ldapize"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+. ${strings}
+. ${system}
+init $*
+
+#defines
+_MYDIR=$(dirname `realpath $0`)
+
+#trap "INSTALLLOOP=0 ; clear; echo; echo \"Exit to shell. To return into bootstrap script, please type: cbsd wb_installer\";  echo" HUP INT ABRT BUS TERM EXIT
+
+### MAIN Route ###
+#set -e
+#    . ${_MYDIR}/${MYNAME}.subr
+#set +e
+
+
+install_module()
+{
+	local _files _i _dir
+	[ ! -d "${myskel}" ] && err 1 "${MAGENTA}No such skel dir: ${GREEN}${myskel}${NORMAL}"
+	[ -z "${uri}" -o -z "${ou}" -o -z "${dc}" ] && err 1 "${MAGENTA}Error: ${GREEN}ou= , dc=, uri= ${MAGENTA}is mandatory${NORMAL}"
+	_files=$( find -E ${myskel} \( -type f \) -print |sed s:${myskel}::g )
+
+	for _i in ${_files}; do
+		_dir=$( dirname ${_i} )
+		[ ! -d "${data}${_dir}" ] && mkdir -p "${data}${_dir}"
+		if [ -f "${data}${_i}" ]; then
+			# do backup
+			[ ! -d "${mysysdir}/${_dir}" ] && mkdir -p "${mysysdir}${_dir}"
+			cp "${data}${_i}" "${mysysdir}/${_dir}"
+			${ECHO} "${MAGENTA}Original ${_i} from jail stored into: ${GREEN}${mysysdir}${_dir}${NORMAL}"
+		fi
+		sed -Ees:%%URI%%:${uri}:g -es:%%OU%%:${ou}:g -es:%%DC%%:${dc}:g ${myskel}${_i} > ${data}${_i}
+	done
+
+	[ ${jid} -gt 0 ] && /usr/sbin/jexec ${jid} /usr/sbin/service sshd reload >/dev/null 2>&1
+
+	${ECHO} "${MAGENTA}Make sure that you have ${GREEN}pam_mkhomedir nss_ldap pam_ldap${MAGENTA} installed in your jail${NORMAL}"
+}
+
+deinstall_module()
+{
+	local _files _i _dir
+	[ ! -d "${myskel}" ] && err 1 "${MAGENTA}No such skel dir: ${GREEN}${myskel}${NORMAL}"
+	_files=$( find -E ${myskel} \( -type f \) -print |sed s:${myskel}::g )
+
+	for _i in ${_files}; do
+		if [ -f "${mysysdir}${_i}" ]; then
+			_dir=$( dirname ${_i} )
+			[ ! -d "${data}/${_dir}" ] && mkdir -p "${data}${_dir}"
+			mv "${mysysdir}${_i}" "${data}/${_dir}"
+			${ECHO} "${MAGENTA}Original ${_i} from ${GREEN}${mysysdir}${_dir}${MAGENTA} restored${NORMAL}"
+		fi
+	done
+
+	[ ${jid} -gt 0 ] && /usr/sbin/jexec ${jid} /usr/sbin/service sshd reload >/dev/null 2>&1
+}
+
+
+. ${jrcconf}
+[ $? -eq 1 ] &&  err 1 "${MAGENTA}No such jail: ${GREEN}${jname}${NORMAL}"
+
+mysysdir="${jailsysdir}/${jname}/module-${MYNAME}"
+
+[ ! -d "${mysysdir}" ] && mkdir -p ${mysysdir}
+
+myskel="${_MYDIR}/skel"
+
+case "${mode}" in
+	install)
+		[ -f "${mysysdir}/etc/pam.d/sshd" ] && err 1 "${MAGENTA}You already applyied ${GREEN}${MYNAME}${MAGENTA} for ${GREEN}${jname}${MAGENTA}. Use ${GREEN}mode=modify${MAGENTA} or ${GREEN}mode=deinstall${NORMAL}"
+		install_module
+		;;
+	deinstall)
+		[ ! -f "${mysysdir}/etc/pam.d/sshd" ] && err 1 "${MAGENTA}Original backup files not found in your ${GREEN}${mysysdir}${MAGENTA}. Are you remove this dir? Please restore /etc/pam.d/sshd in jail by hand${NORMAL}"
+		deinstall_module
+		;;
+	modify)
+		install_module
+		;;
+	*)
+		err 1 "${MAGENTA}Unknown mode${NORMAL}"
+esac

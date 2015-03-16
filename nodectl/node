@@ -1,0 +1,266 @@
+#!/usr/local/bin/cbsd
+#v10.1.0
+CBSDMODULE="node"
+MYARG="mode"
+MYOPTARG="node port rootkeyfile pw header allinfo"
+MYDESC="Manipulate or show information for remote nodes"
+ADDHELP="mode = add, remove, list, status\n\
+node = remote node ip or fqdn\n\
+port = ssh port of remote node\n\
+rootkeyfile = path to id_rsa for root access\n\
+pw = password of cbsd user from remote node\n\
+header = print header in node list\n\
+allinfo = 1 (default) show all info for nodelist, 0 - only nodename\n\
+mode=show - show details about node\n"
+
+EXTHELP="wf_node.html"
+
+. ${subr}
+. ${tools}
+. ${nodes}
+
+readconf node.conf
+init $*
+
+getpw()
+{
+	local oldmodes=$( stty -g )
+	pw=""
+
+	trap "stty ${oldmodes}" HUP INT ABRT BUS TERM EXIT
+
+	printf "${BOLD}Enter password of cbsd user on ${GREEN}${node}${NORMAL}${BOLD}:${NORMAL} "
+	while [ -z "${pw}" ]; do
+		stty -echo
+		set -e
+		read pw
+		set +e
+	done
+
+	stty $oldmodes
+	echo
+}
+
+
+nodeadd()
+{
+	local _res
+
+	[ -z "${node}" ] && err 1 "${MAGENTA}Empty node${NORMAL}"
+	[ -z "${port}" ] && port=22222
+	[ -z "${pw}" ] && getpw
+	[ -z "${rootkeyfile}" ] && rootkeyfile="/root/.ssh/id_rsa"
+
+	if iptype $node; then
+		resolvhost ${node}
+		[ -z "${HST}" ] && err 1 "${MAGENTA}Can't resolv IP for ${node} hostname. Use IP address.${NORMAL}"
+		node=$HST
+	fi
+
+	${ECHO} "${MAGENTA}Connecting to ${node}...${NORMAL}"
+	NODENAME=$( cbsdssh $node $port $cbsduser $pw /usr/local/bin/cbsd getinfo -q nodename )
+	code=$?
+
+	case ${code} in
+		0)
+			${ECHO} "${MAGENTA}${node} has nodename: ${GREEN}${NODENAME}${NORMAL}"
+			;;
+		2)
+			err 1 "${MAGENTA}Bad password or system user${NORMAL}"
+			;;
+		*)
+			err 1 "${MAGENTA}Connection problem (code ${code}): ${GREEN}${node}${NORMAL}"
+			;;
+	esac
+
+	[ -z "$NODENAME" ] && err 1 "${MAGENTA}No nodename found. Check remote cbsd settings${NORMAL}"
+
+	MD5NAME=$( /sbin/md5 -qs ${NODENAME} )
+	nodeaddkey md5name=${MD5NAME} ip=${node} port=${port} pw=${pw} > $DEBLOG 2>&1
+
+	_res=$?
+
+	case ${_res} in
+		0)
+			${ECHO} "${MAGENTA}Added successfull: ${GREEN}${node}${NORMAL}"
+			LOCALKEY="${rsshdir}/${MD5NAME}.id_rsa"
+			${SYSRC_CMD} -qf ${rsshdir}/${NODENAME}.node SSHKEY=$LOCALKEY > /dev/null
+			${SYSRC_CMD} -qf ${rsshdir}/${NODENAME}.node IP=$node > /dev/null
+			${SYSRC_CMD} -qf ${rsshdir}/${NODENAME}.node PORT=$port > /dev/null
+			chown ${cbsduser} ${rsshdir}/${NODENAME}.node
+			IP=$( cbsdsql nodes select ip from nodelist where nodename=\"${NODENAME}\" )
+
+			if [ -z "${IP}" ]; then
+				cbsdsql nodes "INSERT INTO nodelist ( nodename, ip, port, keyfile, rootkeyfile, invfile ) VALUES ( \"${NODENAME}\", \"${node}\", \"${port}\", \"${LOCALKEY}\", \"${rootkeyfile}\", \"inv.${NODENAME}.sqlite\" )"
+			else
+				${ECHO} "${MAGENTA}Already exist in database, updating: ${GREEN}${node}${NORMAL}"
+				cbsdsql nodes DELETE FROM nodelist WHERE nodename=\"${NODENAME}\"
+				cbsdsql nodes "INSERT INTO nodelist ( nodename, ip, port, keyfile, rootkeyfile, invfile ) VALUES ( \"${NODENAME}\", \"${node}\", \"${port}\", \"${LOCALKEY}\", \"${rootkeyfile}\", \"inv.${NODENAME}.sqlite\" )"
+			fi
+			idle_update ${NODENAME}
+			retrinv node=${NODENAME} tryoffline=1
+			return ${_res}
+			;;
+		1)
+			cat ${DEBLOG}
+			err ${_res} "${MAGENTA}Error: Bad password${NORMAL}"
+			;;
+		2)
+			[ -f "${DEBLOG}" ] && /bin/cat ${DEBLOG}
+			err ${_res} "${MAGENTA}Error: No key found or wrong hostname. Make initenv on remote machine${NORMAL}"
+			;;
+		*)
+			cat ${DEBLOG}
+			err ${_res} "${MAGENTA}Error: Unkown error${NORMAL}"
+			;;
+	esac
+}
+
+nodedel()
+{
+	local _descext="descr role domain notes location" _res
+
+	[ -n "${node}" ] || err 1 "${MAGENTA}Empty node${NORMAL}"
+	NODECONF="${rsshdir}/${node}.node"
+
+	if [ -f "${NODECONF}" ]; then
+		. ${NODECONF}
+		[ -f ${SSHKEY} ] && rm -f ${SSHKEY}
+		rm -f ${NODECONF}
+	else
+		${ECHO} "${MAGENTA}No such node config: ${GREEN}${NODECONF}${NORMAL}"
+	fi
+
+	[ -f "${dbdir}/${node}.sqlite" ] && rm -f "${dbdir}/${node}.sqlite"
+	_res=$( cbsdsql nodes DELETE FROM nodelist WHERE nodename=\"${node}\" )
+
+	#descriptions die too
+	find ${dbdir}/nodedescr -type f -depth 1 -maxdepth 1 -name ${node}.\*.descr -delete
+	for i in ${_descext}; do
+		[ -f "${dbdir}/nodedescr/${node}.${i}" ] && rm -f "${dbdir}/nodedescr/${node}.${i}"
+	done
+	err 0 "${MAGENTA}Removed${NORMAL}"
+}
+
+
+show_nodes()
+{
+	local sqldelimer IFS
+
+	if [ ${allinfo} -eq 0 ]; then
+		cbsdsql nodes SELECT nodename FROM nodelist
+	else
+		[ -z "${CBSDXO}" -a ${header} -eq 1 ] && ${ECHO} "${BOLD}NODENAME IP PORT KEYFILE STATUS IDLE${NORMAL}"
+		sqldelimer="|"
+		IFS="|"
+		cbsdsql nodes SELECT nodename,ip,port,keyfile,idle FROM nodelist |while read _nodename _ip _port _keyfile _idle; do
+			local IFS=" "
+			conv_idle
+			[ -z "${CBSDXO}" ] && printf "${NORMAL}" # for column sort
+			${XO} ${CBSDXO} --open nodelist
+			${XO} ${CBSDXO} "{k:nodename} {:ip/%s} {:port/%s} {:keyfile/%s} {:status/%s} {:idle/%s}\n" ${_nodename} ${_ip} ${_port} ${_keyfile} ${_nodestatus} ${_idle}
+			${XO} ${CBSDXO} --close nodelist
+			[ -z "${CBSDXO}" ] && printf "\n"
+			local IFS="|"
+		done
+	fi
+	unset sqldelimer
+}
+
+
+shownode()
+{
+	local _res
+
+	local sqldelimer=" "
+	_res=$( cbsdsql nodes SELECT nodename FROM nodelist WHERE nodename=\"${node}\" )
+
+	[ -z "${_res}" ] && err 1 "${MAGENTA}No such node in databases: ${GREEN}${node}${NORMAL}"
+
+	${ECHO} "${BOLD}  Summary statistics for ${node}  ${NORMAL}"
+	${ECHO} "${BOLD}  ====================================  ${NORMAL}"
+	echo
+
+	if [ ! -f "${dbdir}/${node}.sqlite" ]; then
+		${ECHO} "${MAGENTA}No such inventory for: ${GREEN}${node}${NORMAL}. ${MAGENTA}Try to obtain it...${NORMAL}"
+		retrinv node=${node} tryoffline=1
+		[ ! -f "${dbdir}/${node}.sqlite" ] && err 1 "${MAGENTA}No such inventory for: ${GREEN}${node}${NORMAL}"
+	fi
+
+	local _nodeinv="hostname,nodeip,fs,ncpu,physmem,disks,cpumode,cpufreq,nics,osrelease,hostarch"
+
+	sqldelimer="|"
+
+	eval $( cbsdsql ${node} SELECT ${_nodeinv} FROM local | while read hostname nodeip fs ncpu physmem disks cpumodel cpufreq nics osrelease hostarch; do
+		echo "local hostname=\"\${hostname}\""
+		echo "local nodeip=\"\${nodeip}\""
+		echo "local fs=\"${fs}\""
+		echo "local ncpu=\"${ncpu}\""
+		echo "local physmem=\"${physmem}\""
+		echo "local disks=\"${disks}\""
+		echo "local cpumodel=\"${cpumodel}\""
+		echo "local cpufreq=\"${cpufreq}\""
+		echo "local nics=\"${nics}\""
+		echo "local osrelease=\"${osrelease}\""
+		echo "local hostarch=\"${hostarch}\""
+	done )
+
+	sqldelimer=" "
+
+
+	local jailsnum=$( cbsdsql ${node} SELECT count\(jname\) FROM jails WHERE emulator != \"bhyve\" )
+	local vmsnum=$( cbsdsql ${node} SELECT count\(jname\) FROM jails WHERE emulator = \"bhyve\" )
+
+	[ -z "${jailsnum}" ] && jailsnum="0"
+	[ -z "${vmsnum}" ] && vmsnum="0"
+
+	${ECHO} "${BOLD}Nodename: ${GREEN}${node}${NORMAL}"
+	${ECHO} "${BOLD}Hostname: ${GREEN}${hostname}${NORMAL}"
+	${ECHO} "${BOLD}Node IP: ${GREEN}${nodeip}${NORMAL}"
+	${ECHO} "${BOLD}FS: ${GREEN}${fs}${NORMAL}"
+	${ECHO} "${BOLD}Total core's: ${GREEN}${ncpu}${NORMAL}"
+	${ECHO} "${BOLD}CPU Model: ${GREEN}${cpumode}${NORMAL}"
+	${ECHO} "${BOLD}CPU Frequency: ${GREEN}${cpufrq}${NORMAL}"
+	${ECHO} "${BOLD}Total physmem: ${GREEN}${physmem}${NORMAL}"
+	${ECHO} "${BOLD}NICs: ${GREEN}${nics}${NORMAL}"
+	echo
+	${ECHO} "${BOLD}OS Release: ${GREEN}${osrelease}${NORMAL}"
+	${ECHO} "${BOLD}OS arch: ${GREEN}${hostarch}${NORMAL}"
+	${ECHO} "${BOLD}Total VMs: ${GREEN}${vmsnum}${NORMAL}"
+	${ECHO} "${BOLD}Total Jails: ${GREEN}${jailsnum}${NORMAL}"
+	echo
+	[ ${jailsnum} -ne 0 ] && ${ECHO} "${BOLD}List of ${node} jails:${NORMAL}" && jls node=${node} display=jname,host_hostname,status && echo
+	[ ${vmsnum} -ne 0 ] && ${ECHO} "${BOLD}List of ${node} VMs:${NORMAL}" && bls node=${node} display=jname,status && echo
+}
+
+
+
+
+# MAIN
+curtime=$( /bin/date +%s )
+
+[ -z "${allinfo}" ] && allinfo=1
+[ -z "${header}" ] && header=1
+
+case "${mode}" in
+	"add")
+		nodeadd
+		;;
+	"remove")
+		nodedel
+		;;
+	"list")
+		if [ -n "${CBSDXO}" ]; then
+			show_nodes
+		else
+			show_nodes | /usr/bin/column -t
+		fi
+		;;
+	"show")
+		[ -z "${node}" ] && err 1 "${MAGENTA}Please specify: ${GREEN}node=${NORMAL}"
+		shownode
+		;;
+	*)
+		err 1 "${MAGENTA}Unknown mode${NORMAL}"
+		;;
+esac

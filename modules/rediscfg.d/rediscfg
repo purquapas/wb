@@ -1,0 +1,45 @@
+#!/bin/sh
+#v10.0.2
+globalconf="${workdir}/cbsd.conf";
+CBSDMODULE="helpers"
+MYARG="mode"
+MYOPTARG="jname par rediscfg val"
+MYDESC="cbsd configuration script"
+ADDHELP="jname= works with jail\n\
+rediscfg= path to redis.conf (/usr/local/etc/redis.conf default)\n\
+mode= get,set\n"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+init $*
+
+#defines
+_MYDIR=$(dirname `realpath $0`)
+
+#trap "INSTALLLOOP=0 ; clear; echo; echo \"Exit to shell. To return into bootstrap script, please type: cbsd wb_installer\";  echo" HUP INT ABRT BUS TERM EXIT
+
+### MAIN Route ###
+set -e
+	. ${_MYDIR}/rediscfg.subr
+set +e
+
+echo $val
+exit
+
+REDISCFG="/usr/local/etc/redis.conf"
+
+case "${mode}" in
+	"get")
+		[ -z "${par}" ] && err 1 "${MAGENTA}par= is mandatory${NORMAL}"
+		res=$(get_var ${par})
+		echo ${res}
+		;;
+	"set")
+		[ -z "${val}" ] && err 1 "${MAGENTA}val= is mandatory${NORMAL}"
+		[ -z "${par}" ] && err 1 "${MAGENTA}par= is mandatory${NORMAL}"
+		set_var ${par} ${val}
+		;;
+esac

@@ -1,0 +1,208 @@
+#!/usr/local/bin/cbsd
+#v10.1.0
+MYARG=""
+MYOPTARG=""
+ADDHELP=""
+MYLOCK="/tmp/initenv-tui.lock"
+MYDESC="Node re-initialization"
+EXTHELP="wf_initenv.html"
+
+. ${subr}
+. ${settingstui}
+. ${tools}
+. ${strings}
+. ${initenv}
+. ${dialog}
+
+init $*
+
+# form for $ips
+get_newvalue()
+{
+	local _par _val _desc _retval
+
+	_par=$1
+
+	[ -z "${_par}" ] && return 0
+
+	eval _val="\$${_par}"
+	eval _desc="\$${_par}_desc"
+
+	 f_dialog_input _input "${_par}: ${_desc}" "${_val}" ""
+	 _retval=$?
+
+	 case ${_retval} in
+		0)
+			[ -n "${_input}" ] && export ${_par}="${_input}"
+			;;
+	 esac
+}
+
+commit()
+{
+	local _i VAL
+
+	for _i in ${USERINI}; do
+		eval VAL=\$$_i
+		eval OVAL=\$OLDVAL_${_i}
+		[ "${VAL}" = "${OVAL}" ] && continue
+
+		case "${_i}" in
+			"nodename")
+				nodename=${VAL}
+				old_nodename=${OVAL}
+				change_nodename
+				;;
+			"nat_enable")
+				ok="${VAL}"
+				${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET ${_i}=\"${VAL}\"
+				${SYSRC_CMD} -qf ${inventory} ${_i}="${VAL}"
+				oldinter="${inter}"
+				inter=0
+				configure_nat
+				inter="${oldinter}"
+				;;
+			*)
+				${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET ${_i}=\"${VAL}\"
+				${SYSRC_CMD} -qf ${inventory} ${_i}="${VAL}"
+				;;
+		esac
+	done
+
+	/usr/local/bin/cbsd initenv inter=0
+	err 0 "${MAGENTA}Commited${NORMAL}"
+}
+
+
+dialog_menu_main()
+{
+	local _par VAL
+	local btitle="$DIALOG_BACKTITLE"
+	local prompt=" Use menu for select and edit limit "
+	local hline=
+
+	local title=" CBSD Settings "
+	local _mydesc
+
+	local enable=$( ${SYSRC_CMD} -n cbsdd_enable )
+	local status=NO
+
+	case "$enable" in
+		[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|[Oo][Nn]|1) status=YES
+	esac
+
+	local menu_list="
+		'EXIT'		'EXIT'		'Exit initenv-tui'
+		'rcconf'	'CBSD Enabled: ${status}'	'Enable or Disable cbsdd in /etc/rc.conf'
+	" # END-QUOTE
+
+	for _par in ${USERINI}; do
+		[ "${_par}" = "hostname" ] && continue
+		[ "${_par}" = "mdtmp" ] && continue
+		[ "${_par}" = "workdir" ] && continue
+		[ "${real_zfsfeat}" = "0" -a "${_par}" = "zfsfeat" ] && continue
+		[ "${real_hammerfeat}" = "0" -a "${_par}" = "hammerfeat" ] && continue
+		eval VAL=\$${_par}
+		eval _mydesc=\$${_par}_desc
+		if [ -z "${VAL}" ]; then
+			menu_list="${menu_list} '${_par}'	' '	'${_mydesc}'"
+		else
+			menu_list="${menu_list} '${_par}'	'${VAL}'	'${_mydesc}'"
+		fi
+	done
+
+	menu_list="${menu_list} 'COMMIT'        'Save changes and quit' 'Save!'"
+
+	local height width rows
+	eval f_dialog_menu_with_help_size height width rows \
+		\"\$title\"  \
+		\"\$btitle\" \
+		\"\$prompt\" \
+		\"\$hline\"  \
+		$menu_list
+
+	# Obtain default-item from previously stored selection
+	f_dialog_default_fetch defaultitem
+
+	local menu_choice
+	menu_choice=$( eval $DIALOG \
+		--clear                                 \
+		--title \"\$title\"                     \
+		--backtitle \"\$btitle\"                \
+		--hline \"\$hline\"                     \
+		--item-help                             \
+		--ok-label \"\$msg_ok\"                 \
+		--cancel-label \"Exit\"                 \
+		${cbsd_help}				\
+		${USE_XDIALOG:+--help \"\"}             \
+		--default-item \"\$defaultitem\"        \
+		--menu \"\$prompt\"                     \
+		$height $width $rows                    \
+		$menu_list                              \
+		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
+	)
+
+	local retval=$?
+	f_dialog_data_sanitize menu_choice
+	f_dialog_menutag_store "$menu_choice"
+
+	# Only update default-item on success
+	[ $retval -eq $DIALOG_OK ] && f_dialog_default_store "$menu_choice"
+	return $retval
+}
+
+
+init_items_value()
+{
+	#first of all - push old values to OLDVAL for comparing final result in commit() func
+	local _i VAL
+
+	for _i in ${USERINI}; do
+		eval VAL=\$$_i
+		if [ -z "${VAL}" ]; then
+			export OLDVAL_${_i}=""
+		else
+			export OLDVAL_${_i}="${VAL}"
+		fi
+	done
+}
+
+### MAIN ###
+[ -f "${MYLOCK}" ] && err 1 "Locked: ${MYLOCK}"
+
+touch ${MYLOCK}
+trap "rm -f ${MYLOCK}" HUP INT ABRT BUS TERM EXIT
+
+init_items_default
+init_items_desc
+
+[ -f "${inventory}" ] && . ${inventory}
+
+init_items_value
+real_zfsfeat="${zfsfeat}"
+real_hammerfeat="${hammerfeat}"
+
+while [ 1 ]; do
+	dialog_menu_main
+	ret=$?
+	case $ret in
+		${DIALOG_OK})
+			f_dialog_menutag_fetch mtag
+			[ "${mtag}" = "EXIT" ] && exit 0
+			[ "${mtag}" = "COMMIT" ] && commit
+			get_initenv_${mtag}
+			;;
+		${DIALOG_HELP})
+			get_help
+			continue
+			;;
+		*)
+			rm -f "${MYLOCK}"
+			trap "" HUP INT ABRT BUS TERM EXIT
+			f_die
+		;;
+	esac
+done
+
+rm -f "${MYLOCK}"
+trap "" HUP INT ABRT BUS TERM EXIT

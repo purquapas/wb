@@ -1,0 +1,149 @@
+#!/usr/local/bin/cbsd
+#v10.1.6
+MYARG=""
+MYOPTARG="header"
+MYDESC="List of task queue and status"
+CBSDMODULE="taskd"
+EXTHELP="wf_taskd.html"
+
+. ${subr}
+. ${system}
+. ${strings}
+
+init $*
+
+[ -z "${display}" ] && display="id,status,owner,cmd,logfile,errcode"
+#[ "${shownode}" = "1" ] && display="nodename,${display}"
+
+#remove commas for loop action on header
+mydisplay=$(echo ${display} |/usr/bin/tr ',' '|')
+
+# upper for header
+myheader=$(echo ${mydisplay} |/usr/bin/tr '[:lower:]' '[:upper:]')
+
+conv_status()
+{
+	case "${status}" in
+		0)
+			status="Pending"
+			;;
+		1)
+			status="In Progress"
+			;;
+		2)
+			status="Complete"
+			;;
+		*)
+			status="Unknown"
+			;;
+	esac
+}
+
+
+show_header()
+{
+	local _header="${BOLD}${myheader}${NORMAL}"
+	[ -z "${CBSDXO}" -a ${header} -eq 1 ] && $ECHO ${_header}
+}
+
+populate_output_data()
+{
+	[ -z "${CBSDXO}" ] && printf "${NORMAL}" # for column sort
+
+	local IFS="|"
+
+	# populate values for in output string
+	for _i in ${mydisplay}; do
+		_val=""
+		IFS="|"
+		eval _val="\$$_i"
+		IFS=" "
+		if [ -n "${CBSDXO}" ]; then
+			${XO} ${CBSDXO} "{:${_i}/%s} " "${_val}"
+		else
+			printf "${_val}|"
+		fi
+		IFS="|"
+	done
+
+	[ -z "${CBSDXO}" ] && printf "\n"
+}
+
+
+
+# $1 - which file from. Eg: local
+show_jaildata_from_sql()
+{
+	local _i IFS
+
+	#   set sqlfile for ". rcconf" including
+	if [ -n "${1}" ]; then
+		sqlfile="$1"
+	else
+		sqlfile="cbsdtaskd"
+	fi
+
+	IFS="|"
+
+	cbsdsql ${sqlfile} SELECT id,status,owner,cmd,logfile,errcode FROM taskd| while read id status owner cmd logfile errcode; do
+		conv_status
+		IFS=" "
+		${XO} ${CBSDXO} --open taskls
+#		echo -e "${NORMAL}$id|$status|$owner|$cmd|$logfile|$errcode${NORMAL}"
+		populate_output_data
+		IFS=" "
+		${XO} ${CBSDXO} --close taskls
+		IFS="|"
+	done
+	IFS=" "
+}
+
+show_remote()
+{
+
+	show_header
+
+	[ -z "${node}" ] && node=$(cbsd node mode=list header=0 allinfo=0)
+
+	for _n in $node; do
+		nodename="${_n}"
+		show_jaildata_from_sql "inv.${_n}"
+	done
+}
+
+show_local()
+{
+	local _errcode _status
+
+	[ -z "${CBSDXO}" -a ${header} -eq 1 ] && show_header
+
+	show_jaildata_from_sql cbsdtaskd
+}
+
+show_tasks()
+{
+
+	if [ -n "${node}" ]; then
+		show_remote
+		exit 0
+	fi
+
+	if [ -n "${alljails}" ]; then
+		show_local
+		header=0
+		show_remote
+	else
+		show_local
+	fi
+
+}
+
+## MAIN
+[ -z "${header}" ] && header=1
+#sqldelimer=" "
+
+if [ -n "${CBSDXO}" ]; then
+	show_tasks
+else
+	show_tasks | /usr/bin/column -s "|" -t
+fi

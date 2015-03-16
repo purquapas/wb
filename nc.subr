@@ -1,0 +1,413 @@
+if [ ! "$_CBSD_NC_SUBR" ]; then
+_CBSD_NC_SUBR=1
+###
+
+# common functions used by various rc scripts
+# jname must be set
+# export myjid as JID
+# return 0 if jail not exist
+# return 1 if jail exist
+get_jid() {
+	local _res
+	myjid="0"
+
+	[ -z "$jname" -a -z "${path}" ] && return 0
+
+	_res=$( /usr/sbin/jls -h jid name |/usr/bin/tail +2| while read _jid _name; do
+		[ "${_name}" = "${jname}" ] && echo ${_jid}
+	done)
+
+	[ -z "${_res}" ] && return 0
+
+	myjid=${_res}
+	return 1
+}
+
+# fatal error. Print message then quit with exitval
+err() {
+	exitval=$1
+	shift
+	echo -e "$*"
+	# 1>&2
+	exit $exitval
+}
+
+# print $MYARG and exit
+usage() {
+	err 1 "usage: $0 ${MYARG}"
+}
+
+# parser/initialization for MYARG, OPTARG
+init() {
+	local MYNUMTEST=0 _i
+	local bin_version=
+	[ -z "${double_args}" ] && double_args=1
+
+	bin_version=$( /usr/local/bin/cbsd -c version 2>/dev/null )
+
+	[ "${bin_version}" != "${myversion}" ] && ${ECHO} "${MAGENTA}Warning: CBSD is ${bin_version} while workdir initializated for ${myversion}. Please re-run: ${GREEN}cbsd initenv${NORMAL}"
+
+	for _i in ${MYARG} ${MYOPTARG}; do
+		MYNUMTEST=$(( MYNUMTEST + 1 ))
+	done
+
+	DEBLOG="${tmpdir}/`/usr/bin/basename $0`-log.$$"
+	trap "rm -f ${DEBLOG}" HUP INT ABRT BUS TERM EXIT
+
+	# disable history of execution cbsd command inside cbsd command
+	export NO_CBSD_HISTORY=yes
+
+	if [ "$1" = "--help" ]; then
+		[ -z "${CBSDMODULE}" ] && CBSDMODULE="sys"
+		echo "[${CBSDMODULE}] $MYDESC"
+		echo "require: ${MYARG}"
+		echo "opt: ${MYOPTARG}"
+		[ -n "${ADDHELP}" ] && printf "$ADDHELP"
+		[ -f "/usr/local/share/doc/cbsd/currentver.html" ] && cbsddocsrc="/usr/local/share/doc/cbsd"
+		[ -n "${EXTHELP}" -a -n "${cbsddocsrc}" ] && printf "External help: ${cbsddocsrc}/${EXTHELP}\n"
+		exit 0
+	fi
+
+	if [ "$1" = "--args" ]; then
+		echo "${greeting} ${MYNUMTEST}"
+		for argword in ${MYARG} ${MYOPTARG}; do
+			echo "${argword}"
+		done
+		err 0 ""
+	fi
+
+	if [ "$1" = "--libxo" ]; then
+		CBSDXO="${1} ${2}"
+		shift
+		shift
+	else
+		CBSDXO=""
+	fi
+
+	[ -f "${localcbsdconf}" ] || err 1 "no such local conf file"
+	. ${localcbsdconf}
+
+	# example
+	#MYARG="src mk"
+	#MYOPTARG="arch"
+	while [ -n "$1" -a $MYNUMTEST -gt 0 ]; do
+		ARG="${1%%=*}" #todo: value with "world1 world2"
+		VAL="${1##*=}"
+		for arg in ${MYARG} ${MYOPTARG}; do
+			case "$arg" in
+				"${ARG}")
+					eval T="\$$ARG"
+					[ ${double_args} -eq 0 -a -n "${T}" ] && continue # value already set, skip
+					eval "${ARG}=${VAL}"; MYNUMTEST=$((MYNUMTEST - 1));
+					break
+					;;
+			esac
+		done
+		shift
+	done
+
+	for i in $MYARG; do
+		unset T
+		eval T="\$$i"
+		[ -z "${T}" ] && err 1 "${MAGENTA}Please set: ${GREEN}$i${NORMAL}"
+	done
+
+	return 0
+}
+
+# getyesno var
+# Show $1 strings and get answer in infinity loop
+# return 0 when YES/1 and 1 when not
+# return 3 if not interactive ($inter=0) (or INTER=0 env exist)
+getyesno()
+{
+	if [ "${inter}" = "0" -o "${INTER}" = "0" ]; then
+		[ "${ALWAYS_YES}" = "1" ] && return 0
+		return 3
+	fi
+
+	if [ -z "${DIALOG}" ]; then
+		echo -e "${BOLD}${1}${NORMAL}"
+		answ=
+		while [ x$answ = x ]; do
+			echo -e "[${GREEN}yes(1) or no(0)${NORMAL}]"
+			read reply leftover
+			case $reply in
+				# "yes", "true", "on", or "1"
+				Y*|y*|1)
+					return 0
+				;;
+				# "no", "false", "off", or "0"
+				N*|n*|0)
+					return 1
+				;;
+			esac
+		done
+	else
+		. ${dialog}
+		local msg_yes="yes"
+		local msg_no="no"
+		f_dialog_title " Yes and No "
+		f_dialog_yesno "${1}" "${hline}"
+		if [ $? -eq 0 ]; then
+			return 0
+		else
+			return 1
+		fi
+	fi
+}
+
+# value="YES" or "NO"
+checkyesno()
+{
+	eval _value=\$${1}
+
+	case $_value in
+		# "yes", "true", "on", or "1"
+		[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|[Oo][Nn]|1)
+			return 0
+			;;
+		# "no", "false", "off", or "0"
+		[Nn][Oo]|[Ff][Aa][Ll][Ss][Ee]|[Oo][Ff][Ff]|0)
+			return 1
+			;;
+		*)
+		# echo "\$${1} is not set properly - see ${rcvar_manpage}."
+			return 1
+			;;
+	esac
+}
+
+# cut prefix from x.x.x.x/pref into IWM variable
+ipwmask()
+{
+	IWM=${1%%/*}
+}
+
+# parse ip4_addr, check ip, remove commas
+# detect when IP6 in list and set flags for sleep
+geniplist()
+{
+	local I ST a
+	[ -z "${1}" ] && return 0
+	[ ! -f "${distdir}/tools.subr" ] && err 1 "No such tools.subr"
+	. ${distdir}/tools.subr
+
+	HAVE_IPV6=0
+	multiips=$@
+
+	I=$( echo ${multiips} |/usr/bin/tr "," " " )
+	IPS=""
+	ST=0
+
+	for a in ${I}; do
+		# Identify type {inet,inet6}.
+		iptype $a
+		case $? in
+			0)
+				echo "IP ${a} not identified"
+				continue
+			;;
+			2)
+				HAVE_IPV6=1
+			;;
+		esac
+		# this is ip
+		ST=$((ST + 1))
+		if [ ${ST} -eq 1 ]; then
+			IPS="${a}"
+		else
+			IPS="${IPS} ${a}"
+		fi
+	done
+}
+
+# print "." for progress activity
+dot()
+{
+	if [ $? -ne 0 ]; then
+		${ECHO} "${MAGENTA}Error in $1${NORMAL}"
+		if [ -f ${DEBLOG} ]; then
+			${ECHO} "${MAGENTA}Guru meditaion: ${NORMAL}"
+			cat ${DEBLOG}
+		fi
+
+		exit 1
+	fi
+
+	[ "$1" = "0" ] && return 0
+
+	printf "${MAGENTA}.${NORMAL}"
+}
+
+
+# check&make lockfile $1
+# $2 - additional action for trap
+# $3 - safe, for force
+makelock()
+{
+	[ -f "${LOCKFILE}" -a "${3}" = "safe" ] && /bin/rm -f ${LOCKFILE}
+	[ -f "${LOCKFILE}"  ] && err 1 "Locked: ${LOCKFILE}. Try later"
+	TRAPS="rm -f ${LOCKFILE}; exit"
+
+	if [ -n "$2" ]; then
+		TRAPS="$2; ${TRAPS}"
+	fi
+
+	trap "${TRAPS}" HUP KILL INT ABRT BUS TERM EXIT
+	[ "$3" = "safe" ] || /usr/bin/touch $LOCKFILE
+}
+
+
+# search for slow jails and wait him before exit
+# $1 - which file lookup: stop or start
+# if $2 then timeout=$2
+wait_for_fpid()
+{
+	local ECHO="echo -e"
+	local A PID
+	local parallel=0
+
+	[ -z "${1}" ] && return 0
+	local myaction="${1}"
+	local myfile="j${myaction}" # jstop and jstart file
+	[ -n "$2" ] && parallel=${2}
+
+	while [ 1 ]; do
+		A=$( /usr/bin/find ${ftmpdir} -type f -depth 1 -maxdepth 1 -name ${myfile}\.\*\.\* |/usr/bin/head -n1 )
+		[ -z "${A}" ] && break
+		PID=$( /bin/cat ${A} )
+		[ -z "${PID}" ] && break
+		/bin/ps -p ${PID} > /dev/null 2>&1
+		[ $? -ne 0 ] && break # No such pid here
+		${ECHO} "${MAGENTA}Waiting for ${myaction}ing jail who have pid: ${GREEN}${PID}${NORMAL}"
+		cbsd_pwait --pid=${PID} --timeout=${parallel}
+	done
+}
+
+# wrapper for including config in $etcdir. $1 is name of the file
+# At the first we try to include $etcdir/defaults/$1, in second: $etcdir/$1
+readconf()
+{
+	[ -z "${1}" ] && return 1
+
+	[ -r "${etcdir}/defaults/$1" ] && . ${etcdir}/defaults/$1
+	[ -r "${etcdir}/$1" ] && . ${etcdir}/$1
+	#finnaly, search conf in jails-system/$jname/etc
+	if [ -n "${jname}" ]; then
+		[ -r "${jailsysdir}/${jname}/etc/${1}" ] && . ${jailsysdir}/${jname}/etc/${1}
+	fi
+
+	return 0
+}
+
+# wrapper for copy config from $etcdir to $2 location
+# local copy of config win, $etcdir/defaults - is last (reverse order to readconf)
+storeconf()
+{
+	[ -z "${1}" -o -z "${2}" ] && return 1
+
+	# per-jail etc dir - first and high priority finnaly
+	if [ -n "${jname}" ]; then
+		[ -r "${jailsysdir}/${jname}/etc/${1}" ] && /bin/cp ${jailsysdir}/${jname}/etc/${1} ${2} && return 0
+	fi
+
+	[ -r "${etcdir}/$1" ] && /bin/cp ${etcdir}/$1 ${2} && return 0
+	[ -r "${etcdir}/defaults/$1" ] && /bin/cp ${etcdir}/defaults/$1 ${2} && return 0
+
+	# no conf here
+	return 1
+}
+
+validate_jname()
+{
+	local _res
+	[ -z "$1" ] && return 1
+	_res=$( echo ${1} |/usr/bin/grep -E "^[0-9]|[-E%^&\(\)+\/?><:\{\}=\.]" 2>&1 )
+	return $?
+}
+
+# echo ${_device} |grep -sq ^/
+# concat for workdir when $1 not beginning with /
+# data=$( normalize_path ${data} )
+normalize_path()
+{
+	local _res
+	echo ${1} |grep -sq ^/
+	if [ $? -eq 1 ]; then
+		_res="${workdir}/${1}"
+	else
+		_res="${1}"
+	fi
+	echo "${_res}"
+}
+
+# we need support for relative paths
+# init path from jconf or rcconf
+init_jail_path()
+{
+	path=$( normalize_path ${path} )
+	mount_fstab=$( normalize_path ${mount_fstab} )
+	data=$( normalize_path ${data} )
+	rcconf=$( normalize_path ${rcconf} )
+	jailskeldir=$( normalize_path ${jailskeldir} )
+}
+
+get_help()
+{
+	local _fetch=0
+	local _myhtml=
+	local _myhelp=
+	local TRAP=""
+	local _res
+
+	[ -z "${EXTHELP}" ] && return 0
+
+	# verification that we have a local copy documentation.
+	# - if not, try to use the online documentation.
+	_myhtml="/usr/local/share/doc/cbsd/${EXTHELP}"
+	if [ ! -f "${_myhtml}" ]; then
+		_myhtml="/tmp/myhtml.$$"
+		_fetch=1
+	else
+		_fetch=0
+	fi
+
+	_myhelp="/tmp/myhelp.$$"
+
+	if [ ${_fetch} -eq 1 ]; then
+		f_dialog_info "You have no local documentation. Try to obtain docs from: ${cbsddocsrc}. Please wait..."
+		_res=$( /usr/bin/fetch -q -o "${_myhtml}" "${cbsddocsrc}/${EXTHELP}" 2>&1 )
+		if [ $? -ne 0 -o ! -f "${_myhtml}" ]; then
+			local msg_ok="It's a pity"
+			f_dialog_msgbox "${_res}"
+			return 0
+		fi
+		TRAP="${TRAP} /bin/rm -f ${_myhtml};"
+		trap "${TRAP}" HUP INT ABRT BUS TERM EXIT
+	fi
+
+	# need for help in translate quality
+	/bin/cat > ${_myhelp} << EOF
+   Attention! This is automatic translation of this text.
+You can improve the quality and help CBSD by sending a more correct version
+of the text or fix html pages via GITHUB repository: https://github.com/olevole/cbsd-wwwdoc
+
+EOF
+
+	/usr/bin/sed -e 's/<[^>]*>//g' ${_myhtml} |/usr/bin/tr -s "[:space:]"| /usr/bin/fold -s -w 100 >> ${_myhelp}
+
+	if [ ${_fetch} -eq 1 ]; then
+		trap "" HUP INT ABRT BUS TERM EXIT
+		/bin/rm -f "${_myhtml}"
+	fi
+
+	[ ! -f "${_myhelp}" ] && return 0
+	trap "/bin/rm -f ${_myhelp}" HUP INT ABRT BUS TERM EXIT
+	f_show_help "${_myhelp}"
+	/bin/rm -f ${_myhelp}
+	trap "" HUP INT ABRT BUS TERM EXIT
+}
+
+###
+fi

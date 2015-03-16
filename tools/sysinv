@@ -1,0 +1,92 @@
+#!/bin/sh
+#v10.0.4
+globalconf="${workdir}/cbsd.conf";
+MYARG=""
+MYOPTARG="mode"
+MYDESC="Collect and/or update system-related information in inventory tables"
+ADDHELP="sysinv withount mode=update only collect information and stored in variables\n\
+mode=update - collect and update in db\n"
+
+set -e
+. ${globalconf}
+set +e
+
+
+. ${subr}
+init $*
+
+# create SQL schema
+#${miscdir}/sqlcli ${dbdir}/local.sqlite DROP TABLE IF EXISTS local
+#/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-local.schema
+
+collect_info()
+{
+	local _dmidecode _meminfo _realmem
+
+	_realmem=$( /sbin/sysctl -n hw.physmem 2>/dev/null )
+
+	if [ -n "${_realmem}" ]; then
+		physmem=$(( _realmem / 1048576 ))
+	else
+		physmem=0
+	fi
+
+	_dmidecode=$( which dmidecode )
+
+	if [ -n "${_dmidecode}" ]; then
+		memtype=$( ${_dmidecode} -t memory|grep -A20 "Memory Device" | grep -B20 "^Handle" | egrep "Type:|Speed:" |cut -d : -f 2 |xargs )
+	else
+		memtype=""
+	fi
+
+	hostname=$( /sbin/sysctl -n kern.hostname 2>/dev/null )
+	hostarch=$( /sbin/sysctl -n hw.machine 2>/dev/null )
+	osrelease=$( /sbin/sysctl -n kern.osrelease 2>/dev/null )
+	cpumodel=$( /sbin/sysctl -n hw.model 2>/dev/null )
+	ncpu=$( /sbin/sysctl -n hw.ncpu 2>/dev/null )
+
+	cpufreq=$( /sbin/sysctl -n dev.cpu.0.freq 2>/dev/null )
+	kernhz=$( /sbin/sysctl -n kern.hz 2>/dev/null )
+	sched=$( /sbin/sysctl -n kern.sched.name 2>/dev/null )
+	eventtimer=$( /sbin/sysctl -n kern.eventtimer.choice 2>/dev/null )
+	disks=$( /sbin/sysctl -n kern.disks 2>/dev/null )
+	[ -f "${nodenamefile}" ] && nodename=$( /bin/cat ${nodenamefile} )
+	 _ret=$( /sbin/sysctl -n kern.features.vimage 2>/dev/null )
+
+	if [ -z "${_ret}" ]; then
+		vimage_feature=0
+	else
+		vimage_feature=1
+	fi
+	_ret=$( /sbin/sysctl -n kern.features.racct 2>/dev/null )
+	if [ -z "${_ret}" ]; then
+		racct=0
+	else
+		racct=1
+	fi
+
+	cbsdver=${myversion}
+
+	nics=""
+	for i in $(/sbin/ifconfig -l); do
+		case "${i%%[0-9]*}" in
+			ipfw|ppp|sl|lp|faith|fwe|fwip|plip|pfsync|pflog|tun|vboxnet|lo)
+				continue
+				;;
+		esac
+		nics="${nics} ${i}"
+	done
+	[ -n "${nics}" ] && nics=$( echo ${nics}|/usr/bin/tr " " "," )
+
+	platform=$( /usr/bin/uname -s )
+}
+
+## MAIN
+collect_info
+
+if [ "${mode}" = "update" ]; then
+	[ ! -h "${dbdir}/local.sqlite" ] && err 1 "${MAGENTA}No inventory symlink. Run ${GREEN}cbsd initenv${MAGENTA} first${NORMAL}"
+	. ${initenv}
+	update_hwinfo
+	env sqlcolnames="1" ${miscdir}/sqlcli ${dbdir}/local.sqlite "SELECT * FROM local" > ${inventory}
+fi

@@ -1,0 +1,13 @@
+--- jail.h.orig	2015-03-09 06:33:20.000000000 +0300
++++ jail.h	2015-03-09 06:33:59.000000000 +0300
+@@ -230,7 +230,9 @@
+ #define	PR_ALLOW_MOUNT_PROCFS		0x0400
+ #define	PR_ALLOW_MOUNT_TMPFS		0x0800
+ #define	PR_ALLOW_MOUNT_FDESCFS		0x1000
+-#define	PR_ALLOW_ALL			0x1fff
++#define	PR_ALLOW_DEV_IO_ACCESS		0x2000
++#define	PR_ALLOW_DEV_DRI_ACCESS		0x4000
++#define	PR_ALLOW_ALL			0x7FFF
+ 
+ /*
+  * OSD methods

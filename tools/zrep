@@ -1,0 +1,88 @@
+#!/usr/local/bin/cbsd
+#v10.1.5
+CBSDMODULE="zrep"
+MYARG=""
+MYOPTARG="jname node mode fs attr daemon mbuffer"
+MYDESC="ZFS-snapshot-based replication for jail data"
+ADDHELP="mode=attr,failover,takeover,sync,status,list,init,clear,clearinit\n"
+
+. ${subr}
+. ${tools}
+. ${strings}
+init $*
+
+readconf zrep.conf
+. ${workdir}/zrep.subr
+
+### MAIN ###
+## zrep_top continues here
+
+[ -z "${daemon}" ] && daemon=0
+[ -z "${mbuffer}" ] && mbuffer=0
+[ "${daemon}" = "1" ] && ${ECHO} "${MAGENTA}Daemonize mode${NORMAL}"
+
+zrep_bootstrap
+
+case "${mode}" in
+	clear)
+		[ -z "${jname}" ] && err 1 "${MAGENTA}Please set: ${GREEN}jname${NORMAL}"
+		zrep_clear $1
+		;;
+	expire)
+		shift
+		zrep_expire "$@"
+		;;
+	init)
+		[ -z "${jname}" ] && err 1 "${MAGENTA}Please set: ${GREEN}jname${NORMAL}"
+		[ -z "${node}" ] && err 1 "${MAGENTA}Please set: ${GREEN}node${NORMAL}"
+		init_node
+		${ECHO} "${MAGENTA}Initialization node: ${GREEN}${node}${NORMAL}"
+		zrep_init "$@"
+		;;
+	clearinit)
+		[ -z "${jname}" ] && err 1 "${MAGENTA}Please set: ${GREEN}jname${NORMAL}"
+		[ -z "${node}" ] && err 1 "${MAGENTA}Please set: ${GREEN}node${NORMAL}"
+		zrep_clear
+		init_node
+		${ECHO} "${MAGENTA}Initialization node: ${GREEN}${node}${NORMAL}"
+		zrep_init "$@"
+		;;
+	changeconfig)
+		shift
+		zrep_changeconfig "$@"
+		;;
+	sync)
+		zrep_sync
+		;;
+	snaponly)
+		shift
+		zrep_snaponly "$@"
+		;;
+	synconly)
+		shift
+		zrep_synconly "$@"
+		;;
+	refresh)	# yes keep this in this order
+		shift
+		zrep_refresh "$@"
+		;;
+	status)
+		shift
+		zrep_status -v -a 
+		;;
+	list)
+		shift
+		zrep_list
+		;;
+	failover)
+		zrep_failover
+		;;
+	takeover)
+		shift
+		zrep_takeover
+		;;
+	_refreshpull)  # Secret option DO NOT PUT IN USAGE!!
+		shift
+		_refreshpull $1
+		;;
+esac

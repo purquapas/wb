@@ -1,0 +1,9 @@
+# Default SQL scheme for DB local::nics
+MYTABLE="gw"
+MYCOL="gw val"
+
+gw="TEXT DEFAULT NULL UNIQUE PRIMARY KEY"
+val="TEXT DEFAULT NULL"
+
+INITDB=""
+CONSTRAINT=""

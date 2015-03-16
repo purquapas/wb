@@ -1,0 +1,77 @@
+#!/bin/sh
+#v10.0.4
+globalconf="${workdir}/cbsd.conf";
+CBSDMODULE="helpers"
+MYARG="mode file"
+MYOPTARG="jname"
+MYDESC="php configuration script"
+ADDHELP="mode= set,get\n"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+. ${strings}
+init $*
+
+#defines
+_MYDIR=$(dirname `realpath $0`)
+SERVICE="php"
+
+#trap "INSTALLLOOP=0 ; clear; echo; echo \"Exit to shell. To return into bootstrap script, please type: cbsd wb_installer\";  echo" HUP INT ABRT BUS TERM EXIT
+
+### MAIN Route ###
+#set -e
+    . ${_MYDIR}/wd_${SERVICE}cfg.subr
+#set +e
+
+#CFG="/usr/local/etc/${SERVICE}-new.ini"
+CFG="/usr/local/etc/${SERVICE}.ini"
+
+
+if [ -z "${jname}" ]; then
+	root_path=""
+	exec_cmd=""
+else
+		. ${jrcconf}
+		if [ $? -eq 1 ]; then
+			err 1 "${MAGENTA}No such jail: ${GREEN}${jname}${NORMAL}"
+		fi
+		[ $jid -eq 0 ] && err 1 "${MAGENTA}Jail is not active: ${GREEN}${jname}${NORMAL}"
+		root_path="${data}"
+		exec_cmd="/usr/sbin/jexec ${jid}"
+fi
+
+
+case "${mode}" in
+	"get")
+		[ -z "${par}" ] && err 1 "${MAGENTA}par= is mandatory${NORMAL}"
+		res=$(get_var ${par})
+		echo ${res}
+		;;
+	"set")
+		[ ! -f "${file}" ] && err 1 "No such file: ${file}"
+		[ -f "${CFG}" ] && cp ${CFG} ${root_path}/${CFG}.cbsd.bak
+		cp ${file} ${root_path}/${CFG}
+
+		trap "mv ${root_path}/${CFG}.cbsd.bak ${root_path}/${CFG}" HUP INT ABRT BUS TERM EXIT
+		_res=$( ${exec_cmd} /usr/local/sbin/php-fpm -t 2>&1 |grep "error" )
+
+		if [ $? -ne 0 ]; then
+			trap "" HUP INT ABRT BUS TERM EXIT
+			if [ -z "${jname}" ]; then
+				jarg="jname=${jname}"
+			else
+				jarg=""
+			fi
+			/sbin/daemon -f /usr/local/bin/cbsd wb_phpcfg ${jarg} mode=reload file=/dev/null
+			err 0 "Done"
+		fi
+		err 1 "${_res}"
+		;;
+	"reload")
+		sleep 3
+		${exec_cmd} /usr/local/etc/rc.d/php-fpm reload
+		;;
+esac

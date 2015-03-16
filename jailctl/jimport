@@ -1,0 +1,159 @@
+#!/usr/local/bin/cbsd
+#v10.1.0
+globalconf="${workdir}/cbsd.conf";
+MYARG=""
+MYOPTARG="jname list newjname"
+#mode=ls
+MYDESC="Import jail from image"
+ADDHELP="list=1 for list images\n\
+newjname=namename - import image and register as newname jail\n"
+CBSDMODULE="jail"
+
+set -e
+. ${globalconf}
+set +e
+
+. ${subr}
+. ${tools}
+init $*
+
+readconf zfs.conf
+
+list_img()
+{
+	ls -1 ${importdir} |grep .img$ |sed 's/\.img//g'
+	exit 0
+}
+
+[ -n "$list" ] && list_img
+[ -z "${jname}" ] && jname=$1
+
+if [ -z "${jname}" ]; then
+	${ECHO} "${MAGENTA}Give me jname or full path${NORMAL}"
+	${ECHO} "${MAGENTA}Content of ${GREEN}${importdir}${MAGENTA}:${NORMAL}"
+	list_img
+fi
+
+DATA="${importdir}"
+SRC="${DATA}/${jname}.img"
+
+if [ ! -f "${SRC}" ]; then
+	SRC=$jname
+	[ ! -f "${SRC}" ] && err 1 "${MAGENTA}No such jail or image here: ${GREEN}${SRC}${NORMAL}"
+fi
+
+TMPDIR="${ftmpdir}/header.$$"
+imgpart mode=extract jname=${SRC} part=header out=${TMPDIR}
+
+[ ! -f "${TMPDIR}" ] && err 1 "${MAGENTA}No header info extracted${NORMAL}"
+
+. "$TMPDIR"
+[ -z "${hdrver}" ] && hdrver=0
+origjname="${jname}"
+/bin/rm -f "${TMPDIR}"
+[ -n "${newjname}" ] && jname=${newjname}
+jstatus jname=$jname > /dev/null 2>&1
+[ $? -eq 0 ] || err 1 "${MAGENTA}Jail already exist: ${GREEN}${jname}${NORMAL}"
+
+JAILDIR="${jaildatadir}/${jname}-${jaildatapref}"
+JAILFSTAB="${jailfstabdir}/${jailfstabpref}${jname}"
+JAILLOCALFSTAB="${jailfstabdir}/${jailfstabpref}${jname}.local"
+JAILRCCONF="${jailsysdir}/${jname}/rc.conf_${jname}"
+
+# check for already existance and offline
+[ -d "${JAILDIR}" ] &&  err 1 "${MAGENTA}Jail datadir for ${jname} already exist. Please check and remove first: ${GREEN}${JAILDIR}${NORMAL}"
+
+imgpart mode=extract jname=${SRC} part=rcconf out=${JAILRCCONF} hdrver=${imgver}
+
+[ "${origjname}" != "${jname}" ] && sed -i '' s:${origjname}:${jname}:g ${JAILRCCONF}
+
+${SYSRC_CMD} -qf ${JAILRCCONF} path=${jaildir}/${jname} > /dev/null
+${SYSRC_CMD} -qf ${JAILRCCONF} mount_fstab=${jailfstabdir}/${jailfstabpref}${jname} >/dev/null
+${SYSRC_CMD} -qf ${JAILRCCONF} data=${jaildatadir}/${jname}-${jaildatapref} >/dev/null
+${SYSRC_CMD} -qf ${JAILRCCONF} rcconf=${jailrcconfdir}/${jname}-rcconf >/dev/null
+
+. ${JAILRCCONF}
+
+init_jail_path
+
+imgpart mode=extract jname=${SRC} part=fstab out=${JAILFSTAB} hdrver=${imgver}
+[ "${origjname}" != "${jname}" ] && sed -i '' s:${origjname}:${jname}:g ${JAILFSTAB}
+replacewdir file0="${JAILFSTAB}" file1="${JAILRCCONF}" old="CBSDROOT"
+
+if [ "${origjname}" != "${jname}" ]; then
+	/bin/mkdir -p ${jailsysdir}/tmp.$$
+	imgpart mode=extract jname=${SRC} part=sysdata out=${jailsysdir}/tmp.$$ hdrver=${imgver} > /dev/null
+	# migrate new version of rc.conf and delete old
+	[ -f "${JAILRCCONF}" ] && /bin/mv ${JAILRCCONF} ${jailsysdir}/tmp.$$/${origjname}/
+	[ -f "${jailsysdir}/tmp.$$/${origjname}/rc.conf_${origjname}" ] && /bin/rm -f "${jailsysdir}/tmp.$$/${origjname}/rc.conf_${origjname}"
+	[ -d "${jailsysdir}/${jname}" ] && /bin/rm -rf ${jailsysdir}/${jname}
+	[ -d "${jailsysdir}/tmp.$$/${origjname}" ] && mv ${jailsysdir}/tmp.$$/${origjname} ${jailsysdir}/${jname}
+	/bin/rmdir ${jailsysdir}/tmp.$$
+else
+	imgpart mode=extract jname=${SRC} part=sysdata out=${jailsysdir} hdrver=${imgver} > /dev/null
+fi
+
+if [ ${hdrver} -ge 2 ]; then
+	imgpart mode=extract jname=${SRC} part=localfstab out=${JAILLOCALFSTAB} hdrver=${imgver}
+fi
+
+if [ "${origjname}" = "${jname}" ]; then
+	case $zfsfeat in
+		0)
+			/bin/mkdir ${JAILDIR}
+			;;
+		1)
+			. $zfstool
+			ZPOOL=$( /sbin/zfs get -Ho value name ${jaildatadir} )
+			if [ -n "${ZPOOL}" ]; then
+				if zfsroot $jname; then
+					err 1 "ZFS with $jname in pool already exist"
+				fi
+				/sbin/zfs create ${zfs_create_flags} -o mountpoint=${JAILDIR} ${ZPOOL}/$jname
+			fi
+			;;
+	esac
+	imgpart mode=extract jname=${SRC} part=data out=${jaildatadir} hdrver=${imgver} > /dev/null
+else
+	# create temporary zfs file system for extract $origname data then rename it to $jname
+	case $zfsfeat in
+		0)
+			/bin/mkdir -p ${jaildatadir}/tmp.$$
+			imgpart mode=extract jname=${SRC} part=data out=${jaildatadir}/tmp.$$ hdrver=${imgver} > /dev/null
+			[ -d "${jaildatadir}/tmp.$$/${origjname}-${jaildatapref}" ] && mv ${jaildatadir}/tmp.$$/${origjname}-${jaildatapref} ${jaildatadir}/${jname}-${jaildatapref}
+			/bin/rmdir ${jaildatadir}/tmp.$$
+			;;
+		1)
+			. ${zfstool}
+			ZPOOL=$( zfs get -Ho value name ${jaildatadir} )
+			if [ -z "${ZPOOL}" ]; then
+				${ECHO} "Can't determine ZPOOL for ${jaildatadir}. Working on non-zfs scenario"
+				/bin/mkdir -p ${jaildatadir}/tmp.$$
+				imgpart mode=extract jname=${SRC} part=data out=${jaildatadir}/tmp.$$ hdrver=${imgver} > /dev/null
+				[ -d "${jaildatadir}/tmp.$$/${origjname}-${jaildatapref}" ] && mv ${jaildatadir}/tmp.$$/${origjname}-${jaildatapref} ${jaildatadir}/${jname}-${jaildatapref}
+				/bin/rmdir ${jaildatadir}/tmp.$$
+			else
+				#create temp zfs
+				TMPDATADIR="${jaildatadir}/tmp.$$"
+				TMPJAILDATADIR="${TMPDATADIR}/${origjname}-${jaildatapref}"
+				/bin/mkdir -p ${TMPJAILDATADIR}
+				/sbin/zfs create ${zfs_create_flags} -o mountpoint=${TMPJAILDATADIR} ${ZPOOL}/$jname
+				imgpart mode=extract jname=${SRC} part=data out=${TMPDATADIR} hdrver=${imgver} > /dev/null
+				/sbin/zfs unmount ${ZPOOL}/${jname}
+				/sbin/zfs set mountpoint=${JAILDIR} ${ZPOOL}/${jname}
+				/sbin/zfs mount ${ZPOOL}/${jname}
+				/bin/rmdir ${TMPJAILDATADIR} ${TMPDATADIR}
+			fi
+			;;
+	esac
+fi
+
+jregister jname=${jname} mode=new rcfile=${JAILRCCONF}
+
+#rm -f ${JAILRCCONF}
+
+if [ -f "${jailsysdir}/${jname}/jail-message" ]; then
+	echo "---- jail messages ----"
+	cat "${jailsysdir}/${jname}/jail-message"
+	echo "---- jail messages ----"
+fi

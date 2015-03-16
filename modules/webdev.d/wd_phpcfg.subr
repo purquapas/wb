@@ -1,0 +1,25 @@
+get_var()
+{
+	local _res=""
+	[ -z "${1}" ] && return 0
+	_res=$( grep -v "^#" ${CFG} | /usr/bin/awk "/^$1/ "'{print substr($0, index($0,$2)) }' )
+	[ -z "${_res}" ] && return 0
+	echo ${_res}
+}
+
+set_var()
+{
+	local _bkp="${tmpdir}/myconf.$$"
+	local _val
+
+	[ -z "${1}" -o -z "${2}" ] && return 0
+	_val=$( get_var $1 )
+	if [ -z "${_val}" ]; then
+		echo "$1 $2" >> ${CFG}
+	else
+		cp ${CFG} ${_bkp}
+		grep -v "^$1" ${_bkp} > ${CFG}
+		echo "$1 $2" >> ${CFG}
+		rm -f ${_bkp}
+	fi
+}

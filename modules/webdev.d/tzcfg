@@ -1,0 +1,23 @@
+#!/bin/sh
+#v10.0.2
+globalconf="${workdir}/cbsd.conf";
+CBSDMODULE="bsdconf"
+MYARG="set"
+MYOPTARG="jname"
+MYDESC="Install timezone helper"
+
+[ -f ${globalconf} ] || err 1 "no such conf file";
+. ${globalconf}
+. ${subr}
+init $*
+
+#defines
+_MYDIR=$(dirname `realpath $0`)
+
+### MAIN Route ###
+
+tzsetup ${set} > /dev/null 2>&1
+
+[ $? -eq 1 ] && err 1 "No such zone $set"
+
+tzsetup -r

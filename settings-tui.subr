@@ -1,0 +1,1283 @@
+if [ ! "$_CBSD_SETTINGS_TUI_SUBR" ]; then
+_CBSD_SETTINGS_TUI_SUBR=1
+###
+
+#required for . ${dialog} 
+TMPFILE="${ftmpdir}/inputbox.$$"
+
+jname_msg="Jail name. Name must begin with a letter / a-z /  and not have any special symbols: -,.=%"
+host_hostname_msg="Jail Fully Qualified Domain Name"
+ip4_addr_msg="Jail IP address from CBSD pool: ${nodeippool}. Use IP/PREFIX form. Comma-separated for aliases. 0 for disable IP creating by CBSD: useful for vnet Jails. Or DHCP for determine free IP automatically"
+interface_msg="Auto create and auto remove IP on selected NICs. 0 for disable, auto - for auto detect"
+ver_msg="Jail base source version"
+path_msg="Mount point for Jail"
+data_msg="Data directory for Jail"
+devfs_ruleset_msg="DEVFS ruleset number for Jail devfs"
+arch_msg="Target architecture, i386/amd64 or qemu-users arch"
+baserw_msg="1,yes - Jail have personal copy of base system with write access, no NULLFS mount. 0,no - read-only and NULLFS"
+mount_src_msg="1,yes - Jail have shared /usr/src tree in read-only"
+kernelmount_msg="1,yes - Jail have mounted /boot/kernel tree in read-only. Usefull for DTRACE stuff in Jail"
+mount_obj_msg="1,yes - Jail have mounted /usr/obj tree in read-only"
+mount_ports_msg="1,yes - Jail have /usr/ports /usr/ports tree in read-only"
+applytpl_msg="1,yes - Apply CBSD templates for Jail environment"
+floatresolv_msg="1,yes - Floating /etc/resolv.conf content"
+astart_msg="1,yes - Automatically start Jail when system boot"
+vnet_msg="1.yes - Enable VIMAGE/VNet feature"
+exec_timeout_msg="The maximum amount of time to wait for a command to complete"
+exec_fib_msg="The FIB routing table to set when running commands inside the prison"
+exec_consolelog_msg="Jail consolelog file for stdout/stderr output. Possible values: path_to_file, 0 - for disable log to file, 1 - for automatic $logdir/jname.log"
+stop_timeout_msg="The maximum amount of time to wait for a jailed processes to exit after sending them a SIGTERM signal"
+allow_dying_msg="Allow making changes to a dying Jail"
+depend_msg="Specify a Jail or jails that this jail depends on"
+allow_zfs_msg="Privileged users inside the jail will be able to mount and unmount the ZFS file system"
+allow_kmem_msg="Allow kmem and /dev/io devices for jail. Warning: this is insecure options. Use it only for private purposes/X-jails"
+allow_mount_msg="Allow privileged users inside the jail mount and unmount file system"
+allow_devfs_msg="Allow privileged users inside the jail mount and unmount DEVFS file system"
+mount_devfs_msg="Mount DEVFS filesystem in the jail"
+mkhostsfile_msg="Automatically set IP/NAME in /etc/hosts when jail started"
+allow_nullfs_msg="Allow privileged users inside the jail mount and unmount NULLFS file system"
+allow_tmpfs_msg="Allow privileged users inside the jail mount and unmount TMPFS file system"
+allow_procfs_msg="Allow privileged users inside the jail mount and unmount PROCFS file system"
+allow_fdescfs_msg="Jail may mount the fdescfs file system"
+mount_fdescfs_msg="Mount a FDESCFS filesystem on the chrooted /dev/fd directory"
+cpuset_msg="Associate group of CPUs to jail. 0 - for all cores, See man 1 cpuset for valid value"
+GET_NODENAME_MSG="Change nodename. Warning: this operation will recreate the ssh keys in $workdir/.ssh dir"
+mdsize_msg="Enter size for the images"
+GET_IMGSIZE_MSG="Allocate X size of image free space: 100m, 1g"
+GET_SWAPSIZE_MSG="Configure swap partitional in X size (usual RAMx2), 0 - for disable, e.g: 4g"
+GET_CPUS_MSG="Number of CPUs: 1, max: 16"
+GET_RAM_MSG="RAM size, eg: 512M"
+GET_VMPROFILE_MSG="Select profile for VMs"
+GET_JAILPROFILE_MSG="Profile for jcreate"
+GET_HOSTBRIDGE_MSG="Hostbridge for VMs, eg: hostbridge or amd_hostbridge"
+GET_GUESTFS_MSG="Choose FS for boot image"
+GET_BOOT_MSG="First boot device, eg: cd or hdd"
+GET_ISOPATH_MSG="Path to ISO image in srcdir/iso, eg: release.iso. 0 - for default img_iso"
+GET_GW4_MSG="Enter default gateway inside VMs or jail"
+jdomain_msg="Specify CBSD node group name for jail"
+
+# show [] * for empty $1 values
+# for Option list from -tui
+curval()
+{
+	local T
+	[ -z "${1}" ] && return 0
+
+	eval T="\$$1"
+	if [ -n "${T}" ]; then
+		printf "${T}"
+	else
+		printf " "
+	fi
+	return 0
+}
+
+# Increment index for menu counter
+# required cbsd as shell for is_number
+inc_menu_index()
+{
+	local T
+	[ -z "${1}" ] && return 0
+
+	eval T="\$$1"
+
+	if ! is_number ${T}; then
+		T=$(( T + 1 ))
+	else
+		T=$( echo ${T} | /usr/bin/tr '[ABCDEFGHIJKLMNOPQRSTUVWXYZ]' '[BCDEFGHIJKLMNOPQRSTUVWXYZA]' )
+	fi
+	eval "${1}=${T}"
+	return 0
+}
+
+
+#find for first jnameX where X is number++
+freejname()
+{
+	local _num _newjname
+
+	if [ -n "${default_jailname}" ]; then
+		_newjname="${default_jailname}"
+	else
+		_newjname="jail"
+	fi
+
+	for _num in $( jot 100 ); do
+		freejname="${_newjname}${_num}"
+		jstatus jname=${freejname} > /dev/null 2>/dev/null
+		[ $? -eq 0 ] && return 0
+	done
+}
+
+# form for $pkglist
+get_construct_pkglist()
+{
+	pkglist="${ftmpdir}/tui.$$"
+	pkgbrowser controlmaster="${pkglist}"
+	[ ! -s "${pkglist}" ] && pkglist="NO"
+}
+
+# form for $srvlist
+get_construct_services()
+{
+	srvlist="${ftmpdir}/srv.$$"
+	srvbrowser controlmaster="${srvlist}" baseonly=1
+	[ ! -s "${srvlist}" ] && srvlist="NO"
+}
+
+# form for $srvlist
+get_construct_add_user()
+{
+	adduser="${ftmpdir}/adduser.$$"
+	adduser-tui controlmaster="${adduser}"
+	[ ! -s "${adduser}" ] && adduser=
+}
+
+
+
+
+# form for $jname
+# if $1 = "nosearch" than skip for searching/testing of available jname
+get_construct_jname()
+{
+	local _ok _message _input _retval
+
+	f_dialog_title " jname "
+
+	if [ "$1" = "nosearch" ]; then
+			freejname=${jname}
+	else
+		if [ -n "${jname}" ]; then
+			freejname="${jname}"
+		else
+			freejname
+		fi
+	fi
+	_ok=0
+
+	while [ ${_ok} -ne 1 ]; do
+		f_dialog_input _input "${jname_msg}" "${freejname}" \
+			"${_message}" || return $?
+
+		validate_jname ${_input}
+		case $? in
+			1)
+				jstatus jname="${_input}" >/dev/null 2>&1
+				if [ $? -ne 0 ]; then
+					_message="ERROR: Jail ${_input} already exist"
+				else
+					_ok=1
+				fi
+				;;
+			*)
+				_message="ERROR: Bad name. Choose other one"
+				;;
+		esac
+	done
+
+	[ -n "${_input}" ] && jname="${_input}"
+	# reload some dynamic variables depended from jname
+	[ -z "${jname}" ] && return 0
+	merge_apply_profiles ${etcdir}/defaults/${zero_profile} ${global_profile_file}
+}
+
+# form for $host_hostname
+get_construct_host_hostname()
+{
+	local _input _defdomain
+
+	f_dialog_title " host_hostname "
+
+	if [ -n "${host_hostname}" ]; then
+		_defdomain="${host_hostname}"
+	else
+		if [ -n "${default_domain}" ]; then
+			if [ -z "${jname}" ]; then
+				_defdomain="${jname}.${default_domain}"
+			else
+				_defdomain="jail1.${default_domain}"
+			fi
+		else
+			_defdomain="my.domain"
+		fi
+	fi
+
+	f_dialog_input _input "${host_hostname_msg}" "${_defdomain}" \
+			"${_message}" || return $?
+
+	[ -n "${_input}" ] && host_hostname="${_input}"
+}
+
+get_construct_ip4_addr()
+{
+	local _ok=0 _input _retval _i _j _existing_ipjail _existing_ip _myip
+	local msg_yes msg_no IFS _jname _ips
+
+	f_dialog_title " ip4_addr "
+
+	while [ ${_ok} -ne 1 ]; do
+		[ -z "${ip4_addr}" ] && ip4_addr=$( dhcpd 2>/dev/null )
+		f_dialog_input _input "${ip4_addr_msg}" "${ip4_addr}" "IP4 or IP6 Address"
+		_retval=$?
+
+		[ ${_retval} -ne 0 ] && return 0
+
+		#check ip in two phases:
+		# 1) via sqlite database for other's jails ips
+		# 2) for ip in LAN
+
+		if [ -z "${_input}" -a "${_input}" = "0" -a "{_input}" = "DHCP" ]; then
+			ip4_addr="${_input}"
+			return 0
+		fi
+
+		msg_yes="Ok"
+		msg_no="Not Ok"
+
+		_existing_ipjail=""
+		_existing_ip=""
+		_myip=""
+
+		IFS=","
+		for _i in ${_input}; do
+			ipwmask ${_i}
+			[ -z "${IWM}" -o "${_i}" = "0" ] && continue
+			iptype ${IWM}
+			[ $? -eq 1 ] && _myip="${_myip} ${IWM}"
+		done
+
+		# check for other jail
+		IFS="|"
+		_i=0
+		eval $( cbsdsql local SELECT jname,ip4_addr FROM jails WHERE ip4_addr!="0" 2>/dev/null |while read _jname _ips; do
+			echo jname${_i}=\"$_jname\"
+			echo ips${_i}=\"${_ips}\"
+			_i=$(( _i + 1 ))
+		done )
+		unset IFS
+
+		_ok=1
+
+		for _i in $( /usr/bin/seq 0 255 ); do
+			eval _jname="\$jname$_i"
+			[ -z "${_jname}" ] && break
+			# skip for myself
+			[ "${_jname}" = "${jname}" ] && continue
+			eval _existing_ipjail="\$ips$_i"
+			[ -z "${_existing_ipjail}" ] && break
+
+			_existing_ipjail=$( echo ${_existing_ipjail}|/usr/bin/tr "," " " )
+
+			for _i in ${_existing_ipjail}; do
+				ipwmask ${_i}
+				[ -z "${IWM}" ] && continue
+				iptype ${IWM}
+				[ $? -eq 1 ] && _existing_ip="${_existing_ip} ${IWM}"
+			done
+
+			for _i in ${_existing_ip}; do
+				for _j in ${_myip}; do
+					[ "${_i}" = "${_j}" ] && _ok=0 && break
+				done
+				[ ${_ok} -eq 0 ] && break
+			done
+
+			if [ ${_ok} -eq 0 ]; then
+				f_dialog_noyes "${_i} already assigned to jail: ${_jname}.\nIf you believe that it's ok, choose 'ok' to continue or 'not ok' for another IP address" "WARNING"
+				if [ $? -eq 1 ]; then
+					_ok=0
+					break
+				fi
+				_ok=2
+				break
+			fi
+		done # check for local jail end
+
+		[ ${_ok} -eq 0 ] && continue # if not ok from previous stage - repeat
+		[ ${_ok} -eq 2 ] && _ok=1 && continue
+
+		_ok=1
+
+		# check for ip existance in LAN
+		for _i in ${_myip}; do
+			IFS=" "
+			f_dialog_info "Probing for ${_i} availability. Please wait..."
+			unset IFS
+			checkip ip=${_i} check=1 2>/dev/null
+			if [ $? -eq 2 ]; then
+				_ok=0
+			fi
+		done
+
+		if [ ${_ok} -eq 0 ]; then
+			f_dialog_noyes "Seems like ${_i} address already used on several devices on the LAN\nYou can found MAC address by \"arp -an\" command.\n If you believe that it's ok, choose 'ok' to continue or 'not ok' for another IP address" "WARNING"
+			[ $? -eq 0 ] && _ok=1
+		fi
+	done
+
+	ip4_addr="${_input}"
+	return 0
+}
+
+# form for $interface
+# -s "skip this network list"
+# -d 1  - add "disable" choice
+get_construct_interface()
+{
+	local _input _def_iface _mynic _mydesc _mystatus
+	local defaultitem _skipnics="" _disable=0
+
+	local title=" interface "
+	local prompt="${interface_msg}"
+	hline=
+
+	local menu_list="
+		'EXIT'	'EXIT'	'Exit'
+	" # END-QUOTE
+
+	while getopts "s:d:" opt; do
+		case "$opt" in
+			s) _skipnics="${OPTARG}" ;;
+			d) _disable="${OPTARG}" ;;
+		esac
+		shift $(($OPTIND - 1))
+	done
+
+	menu_list="${menu_list} 'auto'		'auto'		'Recommended: determine nic for jail IP via route table.'"
+	if [ ${_disable} -eq 1 ]; then
+		menu_list="${menu_list} 'disable'	'disable'	'Do not create/remove IP automatically: IP of jail must be already initialized or for vnet mode'"
+	fi
+	menu_list="${menu_list} '-'	'-'	''"
+
+	local OLDIFS="${IFS}"
+	local IFS=":"
+
+	local _num=1
+
+	eval $( ${miscdir}/nics-list -da -s "${_skipnics}" |while read _nicname _nicdesc _nicstatus; do
+		echo "nic${_num}_name=\"${_nicname}\""
+		echo "nic${_num}_desc=\"${_nicdesc}\""
+		echo "nic${_num}_status=\"${_nicstatus}\""
+		_num=$(( _num + 1 ))
+	done )
+
+	IFS="${OLDIFS}"
+
+	if [ -n "${interface}" ]; then
+		case "${interface}" in
+			"0")
+				defaultitem="disable"
+				;;
+			*)
+				defaultitem="${interface}"
+		esac
+	else
+		interface="auto"
+		defaultitem="auto"
+	fi
+
+	for _num in $( /usr/bin/seq 1 9999 ); do
+		unset _mynic _mydesc _mystatus
+		eval _mynic="\$nic${_num}_name"
+		[ -z "${_mynic}" ] && break
+		eval _mydesc="\$nic${_num}_desc"
+		eval _mystatus="\$nic${_num}_status"
+		case "${_mynic%%[0-9]*}" in
+			tun|bridge|epair|tap|vlan)
+				_mydesc="Pseudo interface"
+				;;
+			lo)
+				_mydesc="Loopback interface"
+				;;
+		esac
+		[ -z "${_mydesc}" ] && _mydesc="Not available"
+		menu_list="${menu_list} '${_mynic}'	'${_mynic} (${_mystatus} )'	'Description: ${_mydesc}'"
+	done
+
+	cbsd_menubox
+	retval=$?
+
+	case $retval in
+		0)
+			case "${mtag}" in
+				"-"|"EXIT")
+					return 1
+					;;
+				"disable")
+					interface="0"
+					;;
+				*)
+					[ -n "${mtag}" ] && interface="${mtag}"
+					;;
+			esac
+			;;
+		*)
+			;;
+	esac
+
+	return ${retval}
+}
+
+# form for $ver
+get_construct_ver()
+{
+	local _input
+
+	f_dialog_title " ver "
+
+	f_dialog_input _input "${ver_msg}" "${ver}" \
+			"${_message}" || return $?
+
+	ver="${_input}"
+}
+
+# form for $user_pw_root
+get_construct_user_pw_root()
+{
+	local prompt1="Enter New Password"
+	local prompt2="Re-enter Password"
+	local hline="Use alpha-numeric, punctuation, TAB or ENTER"
+
+	f_dialog_title " Jail Root Password "
+
+	local height1 width1
+	f_dialog_inputbox_size height1 width1 \
+		"$DIALOG_TITLE"     \
+		"$DIALOG_BACKTITLE" \
+		"$prompt1"          \
+		""                  \
+		"$hline"
+
+	local height2 width2
+	f_dialog_inputbox_size height2 width2 \
+		"$DIALOG_TITLE"     \
+		"$DIALOG_BACKTITLE" \
+		"$prompt2"          \
+		""                  \
+		"$hline"
+
+	#
+	# Loop until the user provides taint-free/valid input
+	#
+	local _password1 _password2
+	while :; do
+		_password1=$( $DIALOG \
+			--title "$DIALOG_TITLE"         \
+			--backtitle "$DIALOG_BACKTITLE" \
+			--hline "$hline"                \
+			--ok-label "$msg_ok"            \
+			--cancel-label "$msg_cancel"    \
+			--insecure                      \
+			--passwordbox "$prompt1"        \
+			$height1 $width1                \
+			2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
+		) || return $?
+		# Return if user either pressed ESC or chose Cancel/No
+		debug= f_dialog_line_sanitize _password1
+
+		_password2=$( $DIALOG \
+				--title "$DIALOG_TITLE"         \
+				--backtitle "$DIALOG_BACKTITLE" \
+				--hline "$hline"                \
+				--ok-label "$msg_ok"            \
+				--cancel-label "$msg_cancel"    \
+				--insecure                      \
+				--passwordbox "$prompt2"        \
+				$height2 $width2                \
+				2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
+			) || return $?
+		# Return if user either pressed ESC or chose Cancel/No
+		debug= f_dialog_line_sanitize _password2
+
+		# Check for NULL entry
+		if ! [ "$_password1" -o "$_password2" ]; then
+			f_show_msg "$msg_password_is_empty"
+			continue
+		fi
+
+		# Check for password mismatch
+		if [ "$_password1" != "$_password2" ]; then
+			f_show_msg "$msg_passwords_do_not_match"
+			continue
+		fi
+
+		user_pw_root="$_password1"
+		break
+	done
+
+	return $DIALOG_OK
+}
+
+# form for $path
+get_construct_path()
+{
+	local _input
+
+	f_dialog_title " path "
+
+	f_dialog_input _input "${path_msg}" "${path}" \
+			"${_message}" || return $?
+
+	path="${_input}"
+}
+
+# form for $data
+get_construct_data()
+{
+	local _input
+
+	f_dialog_title " data "
+
+	f_dialog_input _input "${data_msg}" "${data}" \
+			"${_message}" || return $?
+
+	data="${_input}"
+}
+
+
+# form for $devfs_ruleset
+get_construct_devfs_ruleset()
+{
+	local _input
+
+	f_dialog_title " devfs_ruleset "
+
+	f_dialog_input _input "${devfs_ruleset_msg}" "${devfs_ruleset}" \
+			"${_message}" || return $?
+
+	devfs_ruleset="${_input}"
+}
+
+# $1 - 1,0 - default values
+get_construct_yesno()
+{
+	local _default=1
+	msg_yes="no"
+	msg_no="yes"
+
+	[ -n "${1}" ] && _default="${1}"
+
+	if [ ${_default} -eq 0 ]; then
+		f_dialog_yesno "${msg}" "${hline}"
+	else
+		f_dialog_noyes "${msg}" "${hline}"
+	fi
+
+	return $?
+}
+
+get_construct_mdsize()
+{
+	local _input
+
+	f_dialog_title " mdsize "
+
+	f_dialog_input _input "${mdsize_msg}" "${mdsize}" \
+			"${_message}" || return $?
+
+	mdsize="${_input}"
+}
+
+get_construct_imgsize()
+{
+	local _input
+
+	f_dialog_title " imgsize "
+
+	f_dialog_input _input "${GET_IMGSIZE_MSG}:" "${imgsize}" \
+			"${_message}" || return $?
+
+	imgsize="${_input}"
+}
+
+get_construct_swapsize()
+{
+	local _input
+
+	f_dialog_title " swapsize "
+
+	f_dialog_input _input "${GET_SWAPSIZE_MSG}:" "${swapsize}" \
+			"${_message}" || return $?
+
+	swapsize="${_input}"
+}
+
+
+# form for $exec_timeout
+get_construct_exec_timeout()
+{
+	local _input
+
+	f_dialog_title " exec_timeout "
+
+	f_dialog_input _input "${exec_timeout_msg}" "${exec_timeout}" \
+			"${_message}" || return $?
+
+	exec_timeout="${_input}"
+}
+
+# form for $exec_fib
+get_construct_exec_fib()
+{
+	local _input
+
+	f_dialog_title " exec_fib "
+
+	f_dialog_input _input "${exec_fib_msg}" "${exec_fib}" \
+			"${_message}" || return $?
+
+	exec_fib="${_input}"
+}
+
+# form for $exec_consolelog
+get_construct_exec_consolelog()
+{
+	local _input
+
+	f_dialog_title " exec_consolelog "
+
+	f_dialog_input _input "${exec_consolelog_msg}" "${exec_consolelog}" \
+		"${_message}" || return $?
+
+	exec_consolelog="${_input}"
+}
+
+# form for $stop_timeout
+get_construct_stop_timeout()
+{
+	local _input
+
+	f_dialog_title " stop_timeout "
+
+	f_dialog_input _input "${stop_timeout_msg}" "${stop_timeout}" \
+		"${_message}" || return $?
+
+	stop_timeout="${_input}"
+}
+
+# form for $depend
+get_jail_depend()
+{
+	local _input
+
+	f_dialog_title " depend "
+
+	f_dialog_input _input "${depend_msg}" \
+		"${_message}" || return $?
+
+	depend="${_input}"
+}
+
+# form for $cpuset
+get_construct_cpuset()
+{
+	local _input
+
+	f_dialog_title " cpuset "
+
+	f_dialog_input _input "${cpuset_msg}" "${cpuset}" \
+			"${_message}" || return $?
+
+	cpuset="${_input}"
+}
+
+# form for $cpus
+get_construct_vm_cpus()
+{
+	local _input
+
+	f_dialog_title " cpu "
+
+	f_dialog_input _input "${GET_CPUS_MSG}" "${vm_cpus}" \
+			"${_message}" || return $?
+
+	vm_cpus="${_input}"
+}
+
+# form for $ram
+get_construct_vm_ram()
+{
+	local _input
+
+	f_dialog_title " ram "
+
+	f_dialog_input _input "${GET_RAM_MSG}" "${vm_ram}" \
+			"${_message}" || return $?
+	
+	vm_ram="${_input}"
+}
+
+# form for $vm_iso_path
+get_construct_isopath()
+{
+	local _input
+
+	f_dialog_title " isopath "
+
+	f_dialog_input _input "${GET_ISOPATH_MSG}" "${vm_iso_path}" \
+			"${_message}" || return $?
+
+	vm_iso_path="${_input}"
+}
+
+# form for $arch
+get_construct_arch()
+{
+	local _input _res
+
+	local qemu_mips64=$( /usr/bin/which qemu-mips64-static 2>/dev/null )
+	local qemu_arm=$( /usr/bin/which qemu-arm-static 2>/dev/null )
+
+	local amd64_menu=
+	local i386_menu=
+	local amd64_desc=
+	local i386_desc=
+
+	local qemu_mips64_desc=
+	local qemu_arm_desc=
+	local qemu_mips64_enable=
+	local qemu_arm_enable=
+	local qemu_mips64_menu="MIPS64"
+	local qemu_arm_menu="ARMv6"
+
+	# test for qemu_mips64
+	if [ -n "${qemu_mips64}" ]; then
+		_res=$( 2>&1 /usr/bin/ldd ${qemu_mips64} |/usr/bin/grep -q "not a dynamic ELF executable" )
+		if [ $? -eq 0 ]; then
+			qemu_mips64_enable=1
+			qemu_mips64_desc="MIPS64 via ${qemu_mips64}"
+		else
+			qemu_mips64_enable=0
+			qemu_mips64_desc="${qemu_mips64} is not static. Please rebuild with STATIC ( emulators/qemu-user-static )"
+		fi
+	else
+		qemu_mips64_enable=0
+		qemu_mips64_desc="You have no qemu-user: please install qemu-devel with BSD_USER and STATIC ops ( emulators/qemu-user-static )"
+	fi
+
+	# test for qemu_arm
+	if [ -n "${qemu_arm}" ]; then
+		_res=$( 2>&1 /usr/bin/ldd ${qemu_arm} |/usr/bin/grep -q "not a dynamic ELF executable" )
+		if [ $? -eq 0 ]; then
+			qemu_arm_enable=1
+			qemu_arm_desc="ARM via ${qemu_arm}"
+		else
+			qemu_arm_enable=0
+			qemu_arm_desc="${qemu_arm} is not static. Please rebuild with STATIC ( emulators/qemu-user-static )"
+		fi
+	else
+		qemu_arm_enable=0
+		qemu_arm_desc="You have no qemu-user: please install qemu-devel with BSD_USER and STATIC ops ( emulators/qemu-user-static )"
+	fi
+
+	local defaultitem="${arch}"
+
+	case "${hostarch}" in
+		"amd64")
+			amd64_menu="*"
+			amd64_desc="This is native architecture for this node"
+			;;
+		"i386")
+			i386_menu="*"
+			i386_desc="This is native architecture for this node"
+			;;
+	esac
+
+	local menu_list="
+		'amd64'	'x86-64 ${amd64_menu}'		'64 bit architecture. ${amd64_desc}'
+		'i386'	'x86 ${i386_menu}'		'32 bit architecture. ${i386_desc}'
+	" # END-QUOTE
+
+	if [ ${qemu_arm_enable} -eq 1 ]; then
+		menu_list="${menu_list} 'arm'	'${qemu_arm_menu}'	'${qemu_arm_desc}'"
+	else
+		menu_list="${menu_list} ''	'armv6 unsupported'	'${qemu_arm_desc}'"
+	fi
+
+	if [ ${qemu_mips64_enable} -eq 1 ]; then
+		menu_list="${menu_list} 'mips'	'${qemu_mips64_menu}'	'${qemu_mips64_desc}'"
+	else
+		menu_list="${menu_list} ''	'mips unsupported'	'${qemu_mips64_desc}'"
+	fi
+
+	cbsd_menubox
+	retval=$?
+
+	case $retval in
+		0)
+			if [ -n "${mtag}" ]; then
+				arch="${mtag}"
+			else
+				arch="${hostarch}"
+			fi
+			;;
+		*)
+			;;
+	esac
+
+	return ${retval}
+}
+
+
+# form for $vm_hostbridge
+get_construct_vm_hostbridge()
+{
+	local _input _res
+
+	local title="${GET_HOSTBRIDGE_MSG}"
+	local defaultitem="${vm_hostbridge}"
+
+	local menu_list="
+		'hostbridge'		'hostbridge'		'Provide a simple host bridge.'
+		'amd_hostbridge'	'amd_hostbridge'	'The amd_hostbridge emulation is identical but uses a PCI vendor ID of AMD'
+	" # END-QUOTE
+
+	cbsd_menubox
+	retval=$?
+
+	case $retval in
+		0)
+			[ -n "${mtag}" ] && vm_hostbridge="${mtag}"
+			;;
+		*)
+			;;
+	esac
+
+	return ${retval}
+}
+
+
+# form for $vm_guestfs
+get_construct_vm_guestfs()
+{
+	local _input _res
+
+	local title="${GET_GUESTFS_MSG}"
+	local defaultitem="${vm_guestfs}"
+
+	local menu_list="
+		'zfs'	'zfs'	'ZFS filesystem'
+		'ufs'	'ufs'	'UFS filesystem'
+	" # END-QUOTE
+
+	cbsd_menubox
+	retval=$?
+
+	case $retval in
+		0)
+			[ -n "${mtag}" ] && vm_guestfs="${mtag}"
+			;;
+		*)
+			;;
+	esac
+
+	return ${retval}
+}
+
+
+# form for $vm_boot
+get_construct_vm_boot()
+{
+	local _input _res
+
+	local title="${GET_BOOT_MSG}"
+	local defaultitem="${vm_boot}"
+
+	local menu_list="
+		'hdd'	'Boot from HDD'	'Boot from attached virtual SATA/SCSI device'
+		'cd'	'Boot from CD'	'Boot from attached virtual ATAPI CD/DVD device'
+	" # END-QUOTE
+
+	cbsd_menubox
+	retval=$?
+
+	case $retval in
+		0)
+			[ -n "${mtag}" ] && vm_boot="${mtag}"
+			;;
+		*)
+			;;
+	esac
+
+	return ${retval}
+}
+
+# form for $arch
+get_construct_vm_os_type()
+{
+	local _input
+	local defaultitem="${vm_os_type}"
+	
+	local menu_list="
+		'freebsd'	'FreeBSD-kernel based distros'		'FreeBSD, FreeNAS, pfSense, ZFSguru, kFreeBSD, ArchBSD and so on..'
+		'linux'		'Linux-kernel based distros'		'Debian, Ubuntu, RHEL, Oracle and about 1024+ names ;-) also'
+		'openbsd'	'OpenBSD-kernel based distros'		'OpenBSD-based guests'
+		'netbsd'	'NetBSD-kernel based distros'		'NetBSD-based guests'
+		'dflybsd'	'DragonFlyBSD-kernel based distros'	'DragonFlyBSD-based guests'
+		" # END-QUOTE
+
+	cbsd_menubox
+	retval=$?
+
+	case $retval in
+		0)
+			[ -n "${mtag}" ] && vm_os_type="${mtag}"
+			;;
+		*)
+			;;
+	esac
+
+	return ${retval}
+}
+
+
+# form for $vm_os_profile
+# if $1 not empty just load profile without dialogizing
+get_construct_vm_os_profile()
+{
+	local _input _search_profile="bhyve-${vm_os_type}" _res bhyve_profile _myprofiles="" _myfile _all _num _myfile
+	local menu_list=
+
+	local title=" profile "
+	local prompt="${GET_VMPROFILE_MSG}"
+
+	_res=$( /usr/bin/find ${etcdir}/defaults ${etcdir} -type f -depth 1 -maxdepth 1 -name ${_search_profile}\* -exec /bin/realpath {} \;| /usr/bin/sort -u )
+
+	_all=0
+
+	for i in ${_res}; do
+		unset bhyve_profile
+		eval $( /usr/bin/grep ^bhyve_profile= ${i} )
+		eval $( /usr/bin/grep ^active= ${i} )
+
+		[ -z "${bhyve_profile}" -o ${active} -eq 0 ] && continue
+
+		unset long_description
+		eval $( /usr/bin/grep ^long_description= ${i} )
+
+		[ -z "${long_description}" ] && long_description="${bhyve_profile}"
+
+		_mypath=$( echo $i | /usr/bin/sed s:^${workdir}/::g )
+		menu_list="${menu_list} '${bhyve_profile}' '${_mypath}' '${long_description}'"
+		# store filename
+		local profile${_all}="${bhyve_profile}"
+		local file${_all}="${i}"
+		_all=$(( _all + 1 ))
+	done
+
+	[ -z "${menu_list}" ] && unset vm_os_profile && return 0
+
+	cbsd_menubox
+	retval=$?
+
+	case $retval in
+		0)
+			vm_os_profile="${mtag}"
+			_num=0
+			_myfile=$( while [ ${_num} -ne ${_all} ]; do
+				eval _myfile="\$file${_num}"
+				eval _prof="\$profile${_num}"
+				[ "${vm_os_profile}" = "${_prof}" ] && echo "${_myfile}" && exit
+				_num=$(( _num + 1 ))
+			done )
+
+			[ -z "${_myfile}" ] && return 0
+
+			if [ -f "${_myfile}" ]; then
+				unset from_jail
+				unset bhyve_profile
+				. ${_myfile}
+				global_profile_file="${_myfile}"
+			fi
+			;;
+		*)
+			;;
+	esac
+
+	return ${retval}
+}
+
+# form for $profile
+# if $1 not empty, just load $1 profile without dialogizing
+get_construct_profile()
+{
+	local _input _retval _search_profile="jail-freebsd-" jail_profile _res _myprofiles="" _myfile _old_profile
+	local menu_list=
+
+	local defaultitem="${profile}"
+	local title=" profile "
+	local prompt="${GET_JAILPROFILE_MSG}"
+
+	# default must be first due to last dir with user settings must overwrite
+	_res=$( /usr/bin/find ${etcdir}/defaults ${etcdir} -type f -depth 1 -maxdepth 1 -name ${_search_profile}\* -exec /bin/realpath {} \;| /usr/bin/sort -u )
+
+	for i in ${_res}; do
+		unset jail_profile
+		eval $( /usr/bin/grep ^jail_profile= ${i} )
+		[ -z "${jail_profile}" ] && continue
+		_mypath=$( echo $i | /usr/bin/sed s:^${workdir}/::g )
+		#_myprofiles="${_myprofiles} ${jail_profile} ${_mypath} on "
+		menu_list="${menu_list} '${jail_profile}' '${_mypath}' '${long_description}'"
+		#store filename
+		local file_${jail_profile}="${i}"
+	done
+
+	[ -z "${menu_list}" ] && unset jail_profile && return 0
+
+	if [ -z "${1}" ]; then
+		cbsd_menubox
+		case $retval in
+		0)
+			[ -n "${mtag}" ] && profile="${mtag}"
+			;;
+		*)
+			;;
+		esac
+	else
+		profile="${1}"
+	fi
+
+	eval _myfile="\$file_$profile"
+	if [ -f "${_myfile}" ]; then
+		. ${_myfile}
+		global_profile_file="${_myfile}"
+		# reload some dynamic variables depended from jname
+		merge_apply_profiles ${etcdir}/defaults/${zero_profile} ${global_profile_file}
+	fi
+	
+	return ${retval}
+}
+
+
+# form for $gw4
+get_construct_gw4()
+{
+	local _input
+
+	f_dialog_title " gw4 "
+
+	f_dialog_input _input "${GET_GW4_MSG}" "${gw4}" \
+			"${_message}" || return $?
+	
+	gw4="${_input}"
+}
+
+
+# form for $nodename
+get_construct_nodename()
+{
+	local _input _retval
+
+	f_dialog_title " nodename "
+
+	f_dialog_input _input "${GET_NODENAME_MSG}" "${nodename}" \
+			"${_message}" || return $?
+
+	nodename="${_input}"
+}
+
+# form for $jdomain
+get_construct_jdomain()
+{
+	local _input _retval
+
+	f_dialog_title " jdomain "
+
+	f_dialog_input _input "${jdomain_msg}" "${jdomain}" \
+			"${_message}" || return $?
+
+	jdomain="${_input}"
+}
+
+
+
+
+make_bhyve_part()
+{
+cat >> ${TMPFILE} << EOF
+exec_start="${exec_start}"
+exec_stop="${exec_stop}"
+emulator="bhyve";
+imgsize="${imgsize}";
+vm_cpus="${vm_cpus}";
+vm_ram="${vm_ram}";
+vm_os_type="${vm_os_type}";
+dist_site="";
+iso_site="";
+iso_img="";
+
+vm_hostbridge="${vm_hostbridge}";
+bhyve_flags="${bhyve_flags}";
+virtio_type="${virtio_type}";
+gw4="${gw4}";
+vm_os_profile="${vm_os_profile}";
+swapsize="${swapsize}"
+vm_guestfs="${vm_guestfs}"
+EOF
+}
+
+
+make_emulator_part()
+{
+cat >> ${TMPFILE} << EOF
+exec_start="/bin/${emulator} ${exec_start}";
+exec_stop="/bin/${emulator} ${exec_stop}";
+EOF
+}
+
+
+# generate temp .jconf
+gen_jconf()
+{
+	local TMPFILE="${ftmpdir}/${jname}.$$.jconf"
+	local fstab="${jailfstabdir}/${jailfstabpref}${jname}"
+	local rcconf="${jailrcconfdir}/rc.conf_${jname}"
+
+	# original jail area
+	cat > ${TMPFILE} << EOF
+# DO NOT EDIT THIS FILE. PLEASE USE INSTEAD:
+# cbsd jconfig jname=${jname}
+jname="${jname}";
+path="${path}";
+host_hostname="${host_hostname}";
+ip4_addr="${ip4_addr}";
+mount_devfs="${mount_devfs}";
+allow_mount="${allow_mount}";
+allow_devfs="${allow_devfs}";
+allow_nullfs="${allow_nullfs}";
+mount_fstab="${fstab}";
+arch="${arch}";
+mkhostsfile="${mkhostsfile}";
+devfs_ruleset="${devfs_ruleset}";
+ver="${ver}";
+basename="${basename}";
+baserw="${baserw}";
+mount_src="${mount_src}";
+mount_obj="${mount_obj}";
+mount_kernel="${mount_kernel}";
+mount_ports="${mount_ports}";
+astart="${astart}";
+data="${data}";
+vnet="${vnet}";
+applytpl="${applytpl}";
+mdsize="${mdsize}";
+rcconf="${jailrcconfdir}/rc.conf_${jname}";
+floatresolv="${floatresolv}";
+
+exec_poststart="${exec_poststart}";
+exec_poststop="${exec_portstop}";
+exec_prestart="${exec_prestart}";
+exec_prestop="${exec_prestop}";
+
+exec_master_poststart="${exec_master_poststart}";
+exec_master_poststop="${exec_master_poststop}";
+exec_master_prestart="${exec_master_prestart}";
+exec_master_prestop="${exec_master_prestop}";
+pkg_bootstrap="${pkg_bootstrap}";
+EOF
+
+	[ -n "${user_pw_root}" ] && /bin/cat >> ${TMPFILE} <<EOF
+user_pw_root='${user_pw_root}'
+EOF
+
+	[ -n "${interface}" ] && /bin/cat >> ${TMPFILE} <<EOF
+interface="${interface}"
+EOF
+
+
+	[ -n "${jailskeldir}" ] && /bin/cat >> ${TMPFILE} <<EOF
+jailskeldir="${jailskeldir}"
+EOF
+
+	[ -n "${pkglist}" ] && echo "pkglist=\"${pkglist}\";" >> ${TMPFILE}
+
+	if [ -n "${srvlist}" -a -r "${srvlist}" ]; then
+		/bin/cat ${srvlist} >> ${TMPFILE}
+		/bin/rm -f ${srvlist}
+	fi
+
+	if [ -n "${adduser}" -a -r "${adduser}" ]; then
+		/bin/cat ${adduser} >> ${TMPFILE}
+		/bin/rm -f ${adduser}
+	fi
+
+	# need custom exec_start for qemu-based jail
+	if [ -z "${emulator}" ]; then
+		cat >> ${TMPFILE} << EOF
+exec_start="${exec_start}"
+exec_stop="${exec_stop}"
+EOF
+		getyesno "Do you want to create jail immediately?"
+		[ $? -eq 1 -o $? -eq 3 ] && err 0 "${MAGENTA}You can make now: ${GREEN}cbsd jcreate jconf=${TMPFILE}${NORMAL}"
+		jcreate jconf=${TMPFILE} delpkglist=${delpkglist} removejconf=${removejconf}
+		[ $? -ne 0 ] && err 0 "${MAGENTA}Config file for jconf: ${GREEN}${TMPFILE}${NORMAL}"
+	else
+		case "${emulator}" in
+			"bhyve")
+			make_bhyve_part
+			getyesno "Do you want to create vm immediately?"
+			[ $? -eq 1 -o $? -eq 3 ] && err 0 "${MAGENTA}You can make now: ${GREEN}cbsd bcreate jconf=${TMPFILE}${NORMAL}"
+			bcreate jconf=${TMPFILE} delpkglist=${delpkglist} removejconf=${removejconf}
+			[ $? -ne 0 ] && err 0 "${MAGENTA}Config file for jconf: ${GREEN}${TMPFILE}${NORMAL}"
+			;;
+		*)
+			make_emulator_part
+			echo "emulator=\"${emulator}\"" >> ${TMPFILE}
+			getyesno "Do you want to create jail immediately?"
+			[ $? -eq 1 -o $? -eq 3 ] && err 0 "${MAGENTA}You can make now: ${GREEN}cbsd jcreate jconf=${TMPFILE}${NORMAL}"
+			jcreate jconf=${TMPFILE} delpkglist=${delpkglist} removejconf=${removejconf}
+			[ $? -ne 0 ] && err 0 "${MAGENTA}Config file for jconf: ${GREEN}${TMPFILE}${NORMAL}"
+			;;
+		esac
+	fi
+
+	return 0
+}
+
+
+merge_apply_profiles()
+{
+	[ -z "${1}" ] && return 0
+
+	local _orig="$1"; shift
+	local _custom="$1"; shift
+	local _i
+
+	[ ! -f "${_orig}" ] && return 0
+	[ ! -f "${_custom}" -o "${_custom}" = "${_orig}" ] && unset _custom
+
+	/usr/bin/grep '\$' ${_orig} |/usr/bin/grep -v "^#" |/usr/bin/cut -d "=" -f 1 |/usr/bin/sort > /tmp/1.sorted.$$
+	[ -n "${_custom}" ] && /usr/bin/grep '\$' ${_custom} |/usr/bin/grep -v "^#" |/usr/bin/cut -d "=" -f 1 |/usr/bin/sort > /tmp/2.sorted.$$
+
+	/usr/bin/cut -d "=" -f 1 /tmp/1.sorted.$$ > /tmp/1.cuted.$$
+	[ -n "${_custom}" ] && /usr/bin/cut -d "=" -f 1 /tmp/2.sorted.$$ > /tmp/2.cuted.$$
+
+	/usr/bin/truncate -s0 /tmp/run.sh.$$
+	# dummy file if $2 is empty
+	[ -z "${_custom}" ] && /usr/bin/touch /tmp/2.cuted.$$
+
+	for i in $( /bin/cat /tmp/1.cuted.$$ /tmp/2.cuted.$$|sort -u ); do
+		/usr/bin/grep "^${i}" ${_custom} ${_orig} |/usr/bin/head -n1|/usr/bin/cut -d : -f 2 >> /tmp/run.sh.$$
+	done
+
+	. /tmp/run.sh.$$
+	/bin/rm -f /tmp/1.sorted.$$ /tmp/2.sorted.$$ /tmp/1.cuted.$$ /tmp/2.cuted.$$ /tmp/run.sh.$$
+}
+
+# invert boolean value for \$$1
+# example: invert_checkbox $astart
+invert_checkbox()
+{
+	[ -z "${1}" ] && return 1
+
+	eval _mytest=\$$1
+	if [ "${_mytest}" = "1" ]; then
+		export ${1}=0
+	else
+		export ${1}=1
+	fi
+	continue
+}
+
+###
+fi

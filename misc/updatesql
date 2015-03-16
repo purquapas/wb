@@ -1,0 +1,58 @@
+#!/usr/local/bin/cbsd
+#v10.1.2
+# Script for create or upgrade SQLite tables by known scheme from sh file
+# Usage: ./updatesql <dbfile> <schema_file>
+
+create_table()
+{
+	local _newtable _n _i _val
+
+	_newtable="CREATE TABLE IF NOT EXISTS ${MYTABLE} ( "
+	_n=0
+
+	for _i in ${MYCOL}; do
+		eval _val=\$$_i
+		[ ${_n} -ne 0 ] && _newtable="${_newtable},"
+		_newtable="${_newtable} ${_i} ${_val}"
+		_n=$(( _n + 1 ))
+	done
+
+	_newtable="${_newtable} ${CONSTRAINT} )"
+
+	${miscdir}/sqlcli ${MYFILE} "${_newtable}"
+}
+
+update_table()
+{
+	local _i _val
+
+	for _i in ${MYCOL}; do
+		eval _val=\$$_i
+		A=`${miscdir}/sqlcli ${MYFILE} "SELECT exists(SELECT ${_i} FROM ${MYTABLE} LIMIT 1)"`
+		[ "${A}" != "1" ] && ${miscdir}/sqlcli $MYFILE ALTER TABLE ${MYTABLE} ADD COLUMN ${_i} ${_val}
+	done
+
+	[ -n "${INITDB}" ] && ${miscdir}/sqlcli $MYFILE $INITDB
+}
+
+## MAIN ##
+if [ $# -ne 2 ]; then
+	echo "Usage $0 <dbfile> <path_to_schema>"
+	exit 0
+fi
+
+MYFILE=${1}
+SCHEMA=${2}
+
+[ ! -f ${MYFILE} ] && /usr/bin/touch ${MYFILE}
+/bin/chmod 0660 ${MYFILE} && /usr/sbin/chown ${cbsduser}:${cbsduser} ${MYFILE}
+
+if [ ! -f ${SCHEMA} ]; then
+	echo "File ${SCHEMA} not found"
+	exit 1
+fi
+
+. ${SCHEMA}
+
+create_table
+update_table

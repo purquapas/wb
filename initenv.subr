@@ -1,0 +1,612 @@
+if [ ! "$_CBSD_INITENV_SUBR" ]; then
+_CBSD_INITENV_SUBR=1
+###
+
+init_items_desc()
+{
+	nodename_desc="Short form nodename for this host e.g. like hostname. Warning: this operation will recreate the ssh keys in $workdir/.ssh dir"
+	hostname_desc="Fully qualified domain name (FQDN) of the host"
+	nodeip_desc="Node management IP address"
+	nodedescr_desc="Node info/description"
+	jnameserver_desc="Jails default DNS name-server"
+	nodeippool_desc="Jail pool IP address range"
+	nat_enable_desc="Enable NAT for RFC1918 networks"
+	natip_desc="NAT IP"
+	fbsdrepo_desc="Use official FreeBSD repository? When no (0) repository of CBSD is preferred (usefull for stable=1)"
+	mdtmp_desc="Configure memory disk"
+	repo_desc="Use repository for images and template?"
+	workdir_desc="Work directory"
+	ipfw_enable_desc="Enable IPFW?"
+	zfsfeat_desc="Enable ZFS feature?"
+	hammerfeat_desc="Enable HAMMERFS feature?"
+	jail_interface_desc="Jails NIC"
+	parallel_desc="Parallel mode stop/start"
+	stable_desc="Use STABLE branch (RELENG_10 (ver = 10) instead of RELEASE_10.x (ver = 10.x) ). Only CBSD repository have binary base for STABLE branch"
+	sqlreplica_desc="Enable sqlite3 replication to remote nodes"
+}
+
+init_items_default()
+{
+	INITIP=$(/sbin/ifconfig $( /sbin/route -n get 0.0.0.0 2>/dev/null | /usr/bin/awk '/interface/{print $2}' ) 2>/dev/null|/usr/bin/awk '/inet /{print $2}'|/usr/bin/head -n1)
+	[ -z "${INITIP}" ] && IP="8.8.8.8"
+
+	##default area
+	nodename_default=$( hostname )
+	nodeip_default="${INITIP}"
+	nodedescr_default="Datacenter #5, Middle of Nowhere"
+	jnameserver_default="${INITIP},8.8.8.8"
+	nodeippool_default="10.0.0.0/16 ${INITIP}/24"
+	nat_enable_default="Enable NAT"
+	natip_default="${INITIP}"
+	fbsdrepo_default="1"
+	mdtmp_default="8"
+	repo_default="http://bsdstore.ru"
+	workdir_default="/usr/jails"
+	ipfw_enable_default="1"
+	zfsfeat_default="1"
+	hammerfeat_default="1"
+	jail_interface_default="auto"
+	parallel_default="5"
+	stable_default="0"
+	sqlreplica_default="1"
+}
+
+# install file from $2 to $3 if not equal
+# $1 addit.  arg for install
+installne()
+{
+	[ ! -f "${2}" ] && err 1 "${MAGENTA}installne: no such source: ${GREEN}${2}${NORMAL}"
+
+	if ! cmp -s $2 $3; then
+		/usr/bin/install $1 $2 $3
+		return 1
+	fi
+
+	return 0
+}
+
+make_nat()
+{
+	case "${ok}" in
+		"pf")
+			if [ $( grep ^pf_load= /boot/loader.conf|wc -l ) = 0 ]; then
+				getyesno "Do you want to modify /boot/loader.conf to set pf_load=YES ?" && ${SYSRC_CMD} -vf /boot/loader.conf pf_load=YES
+			fi
+			truncate -s0 ${etcdir}/pfnat.conf
+
+			for _net in ${rfc1918}; do
+				_nm=$( echo ${_net} |tr "/" " " )
+				${workdir}/sbin/netmask ${_nm} ${natip}
+				if [ $? -ne 1 ]; then
+					cat >> ${etcdir}/pfnat.conf <<EOF
+nat on ${ext_iface} from ${_net} to ! ${_net} -> ${natip}
+EOF
+				fi
+			done
+			answ="${ok}"
+			ok="ok"
+			${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET nat_enable=\"${answ}\"
+			return 0
+		;;
+		"ipfilter")
+		truncate -s0 ${etcdir}/ipfilter.conf
+
+		for _net in ${rfc1918}; do
+			_nm=$( echo ${_net} |tr "/" " " )
+			${workdir}/sbin/netmask ${_nm} ${natip}
+			if [ $? -ne 1 ]; then
+				cat >> ${etcdir}/ipfilter.conf <<EOF
+map ${ext_iface} ${_net} -> ${natip}/32 proxy port ftp ftp/tcp
+map ${ext_iface} ${_net} -> ${natip}/32 portmap tcp/udp 10000:20000
+map ${ext_iface} ${_net} -> ${natip}/32
+EOF
+			fi
+		done
+		answ="${ok}"
+		ok="ok"
+		${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET nat_enable=\"${answ}\"
+		return 0
+		;;
+	"ipfw")
+		local check_mod="net.inet.ip.fw.default_to_accept ipfw_nat_load libalias_load"
+		local fix_mod=0
+		for i in ${check_mod}; do
+			grep -q ^${i} /boot/loader.conf || fix_mod=$(( fix_mod + 1 ))
+		done
+		
+		if [ ${fix_mod} -ne 0 ]; then
+			# we need pass inter=0 here for initenv-tui: need for allow accept when we first init ipfw from initenv-tui
+			if getyesno "Do you want to modify /boot/loader.conf to set ipfw_load=YES, ipfw_nat_load=YES, libalias_load=YES and net.inet.ip.fw.default_to_accept=1 ?" || [ "${inter}" = "0" ]; then
+				${SYSRC_CMD} -vf /boot/loader.conf net.inet.ip.fw.default_to_accept=1
+				${SYSRC_CMD} -vf /boot/loader.conf ipfw_nat_load=YES
+				${SYSRC_CMD} -vf /boot/loader.conf libalias_load=YES
+			fi
+		fi
+		truncate -s0 ${etcdir}/ipfw.conf
+		_nm=$( echo ${rfc1918} |tr " " "," )
+		# ${workdir}/sbin/netmask ${_nm} ${natip}
+		# if [ $? -ne 1 ]; then
+		_extiface=$( route -n get default | /usr/bin/awk '/interface:/{print $2}' )
+		/sbin/ifconfig ${_extiface} >/dev/null 2>&1
+		if [ $? -eq 0 ]; then
+			cat >> ${etcdir}/ipfw.conf << EOF
+/sbin/ipfw -q add ${fwcount_end} nat 123 all from ${_nm} to not ${_nm} any via ${_extiface}
+/sbin/ipfw -q nat 123 config ip ${natip}
+/sbin/ipfw -q add ${fwcount_end} nat 123 ip from any to ${natip} via ${_extiface}
+EOF
+		fi
+
+		answ="${ok}"
+		ok="ok"
+		${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET nat_enable=\"${answ}\"
+		return 0
+		;;
+	esac
+	return 1
+}
+
+
+# if arg then force configure
+configure_nat()
+{
+	rfc1918="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
+	ext_iface=$( /sbin/route -n get 0.0.0.0 |/usr/bin/awk '/interface/{print $2}' )
+
+	local _default
+	local _net _nm
+
+	. ${tools}
+
+	if [ "${inter}" = "0" ]; then
+		[ -z "${natip}" ] && natip=$( cbsd -c "cbsdsql local UPDATE local SET natip=\"${natip}\"" 2>/dev/null )
+		ok="${nat_enable}"
+		make_nat
+		return 0
+	fi
+
+	_default=$( cbsd -c "cbsdsql local SELECT natip FROM local" 2>/dev/null )
+
+	iptype ${_default} >/dev/null 2>&1
+
+	if [ $? -ne 1 ]; then
+		_default=$( cbsd -c "cbsdsql local SELECT nodeip FROM local" )
+	fi
+
+	${ECHO} "${BOLD}Set IP address as the aliasing NAT address, e.g: ${GREEN}${_default}${NORMAL}"
+	read natip
+	[ -z "${natip}" ] && natip="${_default}"
+
+	if [ -z "${natip}" ]; then
+		$ECHO "${MAGENTA}Error: empty natip value${NORMAL}"
+		return 1
+	fi
+
+	${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET natip=\"${natip}\"
+
+	_default="pf"
+
+	answ=0
+	ok=
+	while [ "$ok" != "ok" ]; do
+		${ECHO} "${BOLD}Which NAT framework do you want to use: [${GREEN}${_default}${NORMAL}${BOLD}]${NORMAL}"
+		${ECHO} "${MAGENTA}(type FW name, eg pf,ipfw,ipfilter or \"exit\" for break)${NORMAL}"
+		read ok leftover
+		[ -z "$ok" ] && ok="${_default}"
+		make_nat && return
+		[ "${ok}" != "exit" ] || return
+	done
+}
+
+rsyncd_enable()
+{
+	[ ! -f "${inventory}" ] || . ${inventory}
+	if [ $( grep ^cbsdrsyncd_enable="YES" /etc/rc.conf|wc -l ) = 0 ]; then
+		getyesno "Shall i modify the /etc/rc.conf to sets cbsdrsyncd_enable=\"YES\"" && ${SYSRC_CMD} -vf /etc/rc.conf cbsdrsyncd_enable="YES"
+	fi
+
+	if [ -n "$nodeip" ]; then
+		if [ $( grep ^cbsdrsyncd_flags= /etc/rc.conf|wc -l ) = 0 ]; then
+			getyesno "Do you want to modify /etc/rc.conf to set the cbsdrsyncd_flags=\"--config=${etcdir}/rsyncd.conf\" ?" && ${SYSRC_CMD} -vf /etc/rc.conf cbsdrsyncd_flags="--config=${etcdir}/rsyncd.conf"
+		fi
+	fi
+
+	[ -f "/usr/local/etc/rc.d/cbsdrsyncd" ] && ${SYSRC_CMD} -vf /usr/local/etc/rc.d/cbsdrsyncd required_files="${etcdir}/rsyncd.conf"
+	/usr/sbin/service cbsdrsyncd onestart
+}
+
+rsyncd_disable()
+{
+	/usr/sbin/service cbsdrsyncd stop > /dev/null 2>&1
+	${SYSRC_CMD} -vf /etc/rc.conf cbsdrsyncd_enable="NO"
+}
+
+configure_rsync()
+{
+	[ ! -f "${etcdir}/rsyncd.conf" ] && installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/etc/defaults/rsyncd.conf ${etcdir}/rsyncd.conf
+
+	if [ $( grep -c cbsdrsyncd_enable /etc/rc.conf ) = "1" ]; then
+		return 0
+	fi
+
+	getyesno "Configure RSYNC services for jail migration?" && rsyncd_enable
+}
+
+update_hwinfo()
+{
+	for _uninit in ${HWINI}; do
+		eval answ="\$${_uninit}"
+		if [ -n "${answ}" ]; then
+			${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET ${_uninit}=\"${answ}\"
+		fi
+	done
+}
+
+# form for $hostname
+get_initenv_hostname()
+{
+	f_dialog_title " hostname "
+	f_dialog_msgbox "Already set: ${hostname}"
+}
+
+# trigger for cbsdd_enable
+get_initenv_rcconf()
+{
+	case "$( ${SYSRC_CMD} -n cbsdd_enable )" in
+		[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|[Oo][Nn]|1)
+			${SYSRC_CMD} -q cbsdd_enable=NO > /dev/null 2>&1
+			;;
+		*)
+			${SYSRC_CMD} -q cbsdd_enable=YES > /dev/null 2>&1
+	esac
+}
+
+# form for $nodename
+get_initenv_nodename()
+{
+	local _input _retval
+
+	f_dialog_title " nodename "
+
+	f_dialog_input _input "${host_hostname_msg}" "${nodename}" \
+		"${_message}" || return $?
+
+	[ -n "${_input}" ] && nodename="${_input}"
+}
+
+# form for $nodeip
+get_initenv_nodeip()
+{
+	local _input _retval
+
+	f_dialog_title " nodeip "
+
+	f_dialog_input _input "${nodeip_desc}" "${nodeip}" \
+		"${_message}" || return $?
+
+	[ -n "${_input}" ] && nodeip="${_input}"
+}
+
+
+# form for $nodeip
+get_initenv_nodedescr()
+{
+
+}
+
+
+# form for $jnameserver
+get_initenv_jnameserver()
+{
+	local _input _retval
+
+	f_dialog_title " jnameserver "
+
+	f_dialog_input _input "${jnameserver_desc}" "${jnameserver}" \
+		"${_message}" || return $?
+
+	[ -n "${_input}" ] && jnameserver="${_input}"
+}
+
+# form for $nodeippool
+get_initenv_nodeippool()
+{
+	local _input _retval
+
+	f_dialog_title " nodeippool "
+	f_dialog_input _input "${nodeippool_desc}" "${nodeippool}" \
+		"${_message}" || return $?
+
+	[ -n "${_input}" ] && nodeippool="${_input}"
+}
+
+# form for $nat_enable
+get_initenv_nat_enable()
+{
+	local _input _retval
+
+	local title=" NAT framework "
+	local prompt="${nat_enable_desc}"
+	hline=
+
+	local menu_list="${menu_list} 'pf'		'pf'	'Use PF-based NAT'"
+
+	menu_list="${menu_list} 'ipfw'		'ipfw'	'Use IPFW-based NAT'"
+	menu_list="${menu_list} 'ipfilter'	'ipfilter'	'Use ipnat from Ipfilter'"
+
+	local defaultitem="${nat_enable}"
+
+	local height width rows
+	eval f_dialog_menu_with_help_size height width rows \
+		\"\$title\"  \
+		\"\$btitle\" \
+		\"\$prompt\" \
+		\"\$hline\"  \
+		$menu_list
+
+	local menu_choice
+	menu_choice=$( eval $DIALOG \
+		--clear                                 \
+		--title \"\$title\"                     \
+		--backtitle \"\$btitle\"                \
+		--hline \"\$hline\"                     \
+		--item-help                             \
+		--ok-label \"\$msg_ok\"                 \
+		--cancel-label \"Exit\"                 \
+		${USE_XDIALOG:+--help \"\"}             \
+		--default-item \"\$defaultitem\"        \
+		--menu \"\$prompt\"                     \
+		$height $width $rows                    \
+		$menu_list                              \
+		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
+	)
+
+	local retval=$?
+	f_dialog_data_sanitize menu_choice
+	f_dialog_menutag_store "$menu_choice"
+
+	f_dialog_menutag_fetch mtag
+	case $retval in
+		0)
+			nat_enable="${mtag}"
+			;;
+		*)
+			;;
+	esac
+
+	return ${retval}
+}
+
+# form for $natip
+get_initenv_natip()
+{
+	local _input _retval
+
+	f_dialog_title " natip "
+	f_dialog_input _input "${natip_desc}" "${natip}" \
+		"${_message}" || return $?
+
+	[ -n "${_input}" ] && natip="${_input}"
+}
+
+
+# form for $fbsdrepo
+get_initenv_fbsdrepo()
+{
+	local _retval
+
+	 msg_yes="no"
+	 msg_no="yes"
+	 f_dialog_noyes "${fbsdrepo_desc}"
+	_retval=$?
+
+	case ${_retval} in
+	0|1)
+		fbsdrepo=${_retval}
+		;;
+	esac
+}
+
+# form for $repo
+get_initenv_repo()
+{
+	local _input _retval
+
+	f_dialog_title " repo "
+
+	f_dialog_input _input "${repo_desc}" "${repo}" \
+		"${_message}" || return $?
+
+	[ -n "${_input}" ] && repo="${_input}"
+}
+
+# form for $ipfw_enable
+get_initenv_ipfw_enable()
+{
+	local _retval
+
+	msg_yes="no"
+	msg_no="yes"
+	f_dialog_noyes "${ipfw_enable_desc}"
+	_retval=$?
+
+	case ${_retval} in
+	0|1)
+		ipfw_enable=${_retval}
+		;;
+	esac
+}
+
+# form for $zfsfeat
+get_initenv_zfsfeat()
+{
+	local _retval
+
+	msg_yes="no"
+	msg_no="yes"
+	f_dialog_noyes "${zfsfeat_desc}"
+	_retval=$?
+
+	case ${_retval} in
+		0|1)
+			zfsfeat_enable=${_retval}
+			;;
+	esac
+}
+
+
+# form for $hammerfeat
+get_initenv_hammerfeat()
+{
+	local _retval
+
+	msg_yes="no"
+	msg_no="yes"
+	f_dialog_noyes "${hammerfeat_desc}"
+	_retval=$?
+
+	case ${_retval} in
+		0|1)
+			hammerfeat_enable=${_retval}
+			;;
+	esac
+}
+
+
+# form for $jail_interface
+get_initenv_jail_interface()
+{
+	local _input _retval
+
+	f_dialog_title " jail_interface "
+
+	f_dialog_input _input "${jail_interface_desc}" "${jail_interface}" \
+		"${_message}" || return $?
+
+	[ -n "${_input}" ] && jail_interface="${_input}"
+}
+
+# form for $parallel
+get_initenv_parallel()
+{
+	local _input _retval
+
+	f_dialog_title " parallel "
+	f_dialog_input _input "${parallel_desc}" "${parallel}" \
+		"${_message}" || return $?
+	[ -n "${_input}" ] && parallel="${_input}"
+
+}
+
+
+# form for $stable
+get_initenv_stable()
+{
+	local _retval
+
+	 msg_yes="no"
+	 msg_no="yes"
+	 f_dialog_yesno "${stable_desc}"
+	_retval=$?
+
+	case ${_retval} in
+		0|1)
+			stable=${_retval}
+		;;
+	esac
+}
+
+# form for $sqlreplica
+get_initenv_sqlreplica()
+{
+	local _retval
+
+	 msg_yes="no"
+	 msg_no="yes"
+	 f_dialog_yesno "${sqlreplica_desc}"
+	_retval=$?
+
+	case ${_retval} in
+		0|1)
+			sqlreplica=${_retval}
+		;;
+	esac
+}
+
+
+# nodename must be set
+# if exist $old_nodename than remove it
+install_sshkey()
+{
+	local _md5name _keyfile _pubfile
+
+	[ -z "${nodename}" ] && err 1 "${MAGENTA}Empty nodename${NORMAL}"
+
+	# first remove old keys if exist old_nodename
+	if [ -n "${old_nodename}" ]; then
+		_md5name=$( /sbin/md5 -qs ${old_nodename} )
+		_keyfile="${sshdir}/${_md5name}.id_rsa"
+
+		[ -f ${_keyfile} ] && /bin/rm -f ${_keyfile}
+		[ -f "${_pubkey}" ] && /bin/rm -f ${_pubkey}
+	fi
+
+	# keygen
+	_md5name=$( /sbin/md5 -qs ${nodename} )
+	_keyfile="${sshdir}/${_md5name}.id_rsa"
+	_pubfile="${sshdir}/authorized_keys"
+
+	if [ ! -f ${_keyfile} ]; then
+		/usr/bin/ssh-keygen -t rsa -f ${_keyfile} -N ''
+		/bin/mv ${_keyfile}.pub ${_pubfile}
+	fi
+
+	/bin/chmod 0444 ${_pubfile}
+	/bin/chmod 0400 ${_keyfile}
+	/usr/sbin/chown ${cbsduser}:${cbsduser} ${_keyfile} ${_pubfile}
+}
+
+# run install_sshkey for change ssh key
+# update nodename in respective places
+# $nodename and $old_nodename must be filled
+change_nodename()
+{
+	[ -z "${nodename}" -o -z "${old_nodename}" ] && return 0
+	${miscdir}/sqlcli ${dbdir}/local.sqlite UPDATE local SET nodename=\"${nodename}\"
+	# lets save old nodename db as backup
+	if [ -f "${dbdir}/inv.${old_nodename}.sqlite" ]; then
+		/bin/cp ${dbdir}/inv.${old_nodename}.sqlite ${dbdir}/inv.${nodename}.sqlite
+	fi
+	install_sshkey
+	echo "${nodename}" > "${nodenamefile}"
+	env sqlcolnames="1" ${miscdir}/sqlcli ${dbdir}/local.sqlite "SELECT * FROM local" > ${inventory}
+}
+
+
+## MAIN
+#user settings
+USERINI="\
+nodename \
+hostname \
+nodeip \
+nodedescr \
+jnameserver \
+nodeippool \
+nat_enable \
+natip \
+fbsdrepo \
+mdtmp \
+repo \
+workdir \
+ipfw_enable \
+zfsfeat \
+hammerfeat \
+jail_interface \
+parallel \
+stable \
+sqlreplica"
+
+#system settins
+HWINI="fs ncpu physmem memtype disks cpumodel cpufreq kernhz sched eventtimer nics osrelease hostarch vimage_feature racct platform"
+
+###
+fi

@@ -1,0 +1,39 @@
+#!/usr/local/bin/cbsd
+#v10.0.4
+MYARG="ip"
+MYOPTARG=""
+MYDESC="Return network interface name by ip"
+
+. ${subr}
+. ${tools}
+
+init $*
+
+ipwmask ${ip}
+iptype ${IWM}
+_inet=$?
+
+[ ${_inet} -eq 0 ] && err 1 "not ip"
+
+ifs=$( ${miscdir}/nics-list -a |xargs)
+
+for iface in ${ifs}; do
+	A=$( /sbin/ifconfig "${iface}" | /usr/bin/awk '/inet /{print $2}' | /usr/bin/grep "^${IWM}$" 2>/dev/null )
+	[ -z "${A}" ] || err 0 ${iface}
+done
+
+case ${_inet} in
+	1)
+		MODIF="-inet"
+		;;
+	2)
+		MODIF="-inet6"
+		;;
+esac
+
+IFACE=$( /sbin/route -n get ${MODIF} ${IWM} 2>/dev/null | /usr/bin/awk '/interface:/{print $2}' )
+
+# return default
+[ -z ${IFACE} ] && IFACE="lo0"
+
+err 0 ${IFACE}

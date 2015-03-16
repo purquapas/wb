@@ -1,0 +1,227 @@
+if [ ! "$_CBSD_UNIVERSE_SUBR" ]; then
+_CBSD_UNIVERSE_SUBR=1
+###
+
+init_distcc()
+{
+	if [ "${distcc}" = "1"  ]; then
+		readconf distcc.conf
+		if ! distcc_check; then
+			distcc=0
+		fi
+	else
+		distcc=0
+	fi
+}
+
+init_notify()
+{
+	if [ "${notify}" = "1"  ]; then
+		notify=1
+	else
+		notify=0
+	fi
+}
+
+# init SRC_DIR, origmakeconf, MAKEOBJDIRPREFIX, SRCCONF. After init_target_arch only
+# require: $ver, $arch, $target_arch.
+# optional: $basename
+init_srcdir()
+{
+	local _confname
+	SRC_DIR="${srcdir}/src_${ver}/src"
+
+	if [ -z "${basename}" ]; then
+		[ -f "${etcdir}/make.conf" ] && origmakeconf="${etcdir}/make.conf"
+	else
+		[ -f "${etcdir}/make-$basename.conf" ] && origmakeconf="${etcdir}/make-$basename.conf"
+	fi
+
+	if [ -z "${basename}" ]; then
+		export MAKEOBJDIRPREFIX=${srcdir}/obj_${arch}_${target_arch}_${ver}
+	else
+		export MAKEOBJDIRPREFIX=${srcdir}/obj_${basename}_${arch}_${target_arch}_${ver}
+	fi
+
+	if [ -z "${basename}" ]; then
+		_confname="src.conf"
+	else
+		_confname="src-${basename}.conf"
+	fi
+
+	if [ -f "${etcdir}/${_confname}" ]; then
+		SRCCONF="${etcdir}/${_confname}"
+	else
+		SRCCONF="${etcdir}/defaults/${_confname}"
+	fi
+}
+
+# init BASE_DIR. After init_target_arch only
+# require: $arch, $target_arch, $ver
+# optional: $basename, $destdir
+# SKIP_CHECK_DIR=1 - do not exit if dir not exist, just init path variable
+init_basedir()
+{
+
+	if [ -n "${destdir}" ]; then
+		BASE_DIR="${destdir}"
+		return 0
+	fi
+
+	if [ -z "${basename}" ]; then
+		BASE_DIR="${basejaildir}/${basejailpref}_${arch}_${target_arch}_${ver}"
+	else
+		BASE_DIR="${basejaildir}/${basejailpref}_${basename}_${arch}_${target_arch}_${ver}"
+	fi
+}
+
+
+# init KERNEL_DIR
+# require: $arch, $ver
+# optional: $destdir, $name
+init_kerneldir()
+{
+
+	if [ -n "${destdir}" ]; then
+		KERNEL_DIR="${destdir}"
+		return 0
+	fi
+
+	[ -z "${name}" ] && name="GENERIC"
+
+	if [ -z "${basename}" ]; then
+		KERNEL_DIR="${basejaildir}/${platform}-kernel_${name}_${arch}_${ver}"
+	else
+		KERNEL_DIR="${basejaildir}/${platform}-kernel_${basename}_${name}_${arch}_${ver}"
+	fi
+}
+
+
+init_supported_arch()
+{
+	support_arch=0
+
+	# reserved word 'any' for repo
+	[ "${arch}" = "any" ] && return 0
+
+	for i in $SUPPORTED_ARCH; do
+		[ "${arch}" = "${i}" ] && support_arch=1 && return 0
+	done
+
+	[ ${support_arch} -eq 0 ] && err 1 "${MAGENTA}Your arch: ${GREEN}${arch}${MAGENTA} while supported architecture only: ${GREEN}${SUPPORTED_ARCH}${NORMAL}"
+}
+
+# init emulator, TARGET and TARGET_ARCH variable
+# require: $arch, $target_arch
+init_target_arch()
+{
+	local _my_arch=$( uname -m )
+	local _my_target_arch=$( uname -p )
+
+	if [ -n "${target_cputype}" ]; then
+		TARGET_CPUTYPE="${target_cputype}"
+	fi
+
+	if [ "${_my_arch}" != "${arch}" ]; then
+		case "${arch}" in
+			"i386")
+				TARGET="i386"
+				TARGET_ARCH="i386"
+			;;
+			"amd64")
+				TARGET="amd64"
+				TARGET_ARCH="amd64"
+			;;
+			"arm")
+				TARGET="arm"
+				TARGET_ARCH="armv6"
+				BUILDPATH="arm-bsd-user"
+				emulator="qemu-arm-static"
+			;;
+			"mips")
+				TARGET="mips"
+				TARGET_ARCH="mips64"
+				BUILDPATH="mips64-bsd-user"
+				emulator="qemu-mips64-static"
+		    ;;
+		esac
+	fi
+
+	#overwrite target_arch if specify
+	if [ -n "${target_arch}" ]; then
+		TARGET_ARCH="${target_arch}"
+	else
+		if [ -n "${TARGET_ARCH}" ]; then
+			target_arch="${TARGET_ARCH}"
+		else
+			target_arch="${arch}" # default
+		fi
+	fi
+}
+
+# init SVN_REV
+# require: $SRC_DIR
+init_scm_and_version()
+{
+	case "${checkout_method}" in
+		svn*)
+			init_svn_version
+		;;
+	git*)
+			init_git_version
+		;;
+	*)
+		err 1 "${ECHO}Unknown checkout method. Please specify it via: ${GREEN}srcup.conf${NORMAL}"
+	esac
+}
+
+# init SVN_REV
+# require: $SRC_DIR
+init_svn_version()
+{
+	local SCM=""
+
+	if [ -f "/usr/bin/svnlite" ]; then
+		SCM="/usr/bin/svnlite"
+	elif [ -f "/usr/local/bin/svn" ]; then
+		SCM="/usr/local/bin/svn"
+	else
+		err 1 "${MAGENTA}No svn in the base. Please install devel/subversion${NORMAL}"
+	fi
+
+	SVN_REV=$( cd ${SRC_DIR} && ${SCM} info 2>/dev/null |/usr/bin/awk '/^Revision: /{printf $2}' )
+	[ -z "${SVN_REV}" ] && SVN_REV=$( /bin/date )
+}
+
+# init SVN_REV
+# require: $SRC_DIR
+init_git_version()
+{
+	local SCM=""
+
+	if [ -f "/usr/local/bin/git" ]; then
+		SCM="/usr/local/bin/git"
+	else
+		err 1 "${MAGENTA}No git in the base. Please install devel/git${NORMAL}"
+	fi
+
+#	SVN_REV=$( cd ${SRC_DIR} && ${SCM} info 2>/dev/null |/usr/bin/awk '/^Revision: /{printf $2}' )
+	[ -z "${SVN_REV}" ] && SVN_REV=$( /bin/date )
+}
+
+
+# init NUMJOBS, NOCLEANUP
+# require: $maxjobs, $clean
+init_make_flags()
+{
+	NUMJOBS=""
+	[ $maxjobs -ne 0 ] && NUMJOBS="-j${maxjobs}"
+
+	NOCLEANUP=""
+	[ ${clean} -ne 1 ] && NOCLEANUP="-DNO_CLEAN"
+
+	return 0
+}
+
+###
+fi

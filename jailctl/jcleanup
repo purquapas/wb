@@ -1,0 +1,39 @@
+#!/usr/local/bin/cbsd
+#v10.0.3
+globalconf="${workdir}/cbsd.conf";
+CBSDMODULE="jail"
+MYARG="jname"
+MYOPTARG=""
+MYDESC="Force unmount and cleanup for offline jail"
+
+# Cleanup all items of broken jail
+. ${subr}
+. ${system}
+. ${mdtools}
+. ${strings}
+
+init $*
+
+. ${jrcconf}
+[ $? -eq 1 ] && return 0 #only for registered jails
+
+[ "${mdsize}" != "0" ] && MDFILE=$( eval find_md_by_mountpath ${data} )
+[ ${baserw} -eq 1 ] && path=$data
+
+rootflags=
+
+#test for zfs mounted in baserw=1
+if [ ${baserw} -eq 1 ]; then
+	case $zfsfeat in
+		1)
+			. $zfstool
+			zfsmnt ${data}
+			if [ $? -eq 1 ]; then
+				rootflags="no_unmount_root"
+			fi
+		;;
+	esac
+fi
+
+umount_cdirs ${path} ${rootflags}
+[ "${mdsize}" != "0" -a -n "${MDFILE}" ] && unmountmd md=${MDFILE}
