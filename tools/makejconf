@@ -2,7 +2,7 @@
 #v10.1.6
 globalconf="${workdir}/cbsd.conf";
 MYARG="jname out"
-MYOPTARG="ip6wa epair fbsd"
+MYOPTARG="ip6wa epair fbsd is_stop"
 MYDESC="Make jailv2 config file"
 ADDHELP="ip6wa - ip6 work-around (sleep 3 seconds) enabled\n\
 epair - this is mandatory for vnet=1 type jail. Sets for jail vnic\n"
@@ -44,7 +44,6 @@ init_jail_path
 /bin/rm -f ${JAILRCCONF}
 
 [ ${vnet} -eq 1 -a -z "${epair}" ] && err 1 "${MAGENTA}Error: Jail is ${GREEN}vnet${NORMAL}-feature enabled, but epair is not set.${NORMAL}"
-
 [ $baserw -eq 1 ] && path=$data
 
 freebsdhostversion=$( ${miscdir}/elf_tables --ver /usr/sbin/jail )
@@ -61,6 +60,7 @@ freebsdhostversion=$( ${miscdir}/elf_tables --ver /usr/sbin/jail )
 [ "${exec_consolelog}" = "0" ] && unset exec_consolelog
 
 [ -z "${fbsd}" ] && fbsd=0
+[ -z "${is_stop}" ] && is_stop=0
 
 if [ "${interface}" = "auto" ]; then
 	geniplist ${ip4_addr}
@@ -129,7 +129,22 @@ if [ ${vnet} -eq 0 ]; then
 
 		# this is carp records
 		if [ -n "${VHID}" ]; then
-#			a=$( carpcfg inter=0 mode=show vhid=${VHID} ip=${IPWVHID} )
+
+			if [ ${is_stop} -eq 1 ]; then
+				# Do not insert any information about the interface/CARP IP
+				# in jconf when is_stop=1 ( jail stop )
+				# CARP IP should not be removed even if there is
+				# interface != disable. Just show notes how to
+				# destroy ip manually
+				IFS=" "
+				${ECHO} "${BOLD}Notes: ${MAGENTA}The CARP address of the interface we don't remove as it is the shared IP${NORMAL}"
+				${ECHO} "${MAGENTA}If you want to remove CARP IP of current jail, use: ${NORMAL}"
+				${ECHO} "${GREEN}cbsd carpcfg mode=unset vhid=${VHID} ip=${IPWVHID}${NORMAL}"
+				IFS=","
+				continue
+			fi
+
+
 			a=$( carpcfg inter=0 mode=show vhid=${VHID} ip=${IWM} )
 			_res=$?
 			if [ ${_res} -ne 0 ]; then
