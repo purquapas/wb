@@ -37,17 +37,29 @@ jname_list=$( get_jname_by_vhid ${vhid} )
 
 [ -z "${jname_list}" ] && exit 0
 
-echo "state $state for jail: ${jname}"
 
-case "${state}" in
-	[Bb][Aa][Cc][Kk][Uu][Pp])
-		jstop inter=0 ${jname}
-		;;
-	[Mm][Aa][Ss][Tt][Ee][Rr])
-		jstart inter=0 ${jname}
-		;;
-	*)
-		err 1 "${MAGENTA}Unknown carp state: ${state}${NORMAL}"
-		;;
-esac
+for jname in ${jname_list}; do
+
+	. ${jrcconf}
+	[ $? -eq 1 ] && continue
+	if [ ${astart} -eq 0 ]; then
+		echo "CARP ${state} state for jail ${jname} received. But jail astart marked as Off. Skipp" >> /tmp/cbsd_carp.log
+	else
+		echo "CARP ${state} state for jail ${jname} received." >> /tmp/cbsd_carp.log
+	fi
+
+	case "${state}" in
+		[Bb][Aa][Cc][Kk][Uu][Pp])
+			jstop inter=0 ${jname}
+			;;
+		[Mm][Aa][Ss][Tt][Ee][Rr])
+			jstart inter=0 ${jname}
+			;;
+		*)
+			err 1 "${MAGENTA}Unknown carp state: ${state}${NORMAL}"
+			;;
+	esac
+
+done
+
 
