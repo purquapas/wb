@@ -42,18 +42,18 @@ for jname in ${jname_list}; do
 	. ${jrcconf}
 	[ $? -eq 1 ] && continue
 	if [ ${astart} -eq 0 ]; then
-		echo "CARP ${state} state for jail ${jname} received. But jail astart marked as Off. Skipp" >> /tmp/cbsd_carp.log
+		echo "`/bin/date` CARP ${state} state for jail ${jname} received. But jail astart marked as Off. Skipp" >> /tmp/cbsd_carp.log
 		continue
 	else
-		echo "CARP ${state} state for jail ${jname} received." >> /tmp/cbsd_carp.log
+		echo "`/bin/date` CARP ${state} state for jail ${jname} received." >> /tmp/cbsd_carp.log
 	fi
 
 	case "${state}" in
 		[Bb][Aa][Cc][Kk][Uu][Pp])
-			jstop inter=0 ${jname}
+			NOCOLOR=1 jstop inter=0 ${jname} >> /tmp/cbsd_carp.log
 			;;
 		[Mm][Aa][Ss][Tt][Ee][Rr])
-			jstart inter=0 ${jname}
+			NOCOLOR=1 jstart inter=0 ${jname}
 			;;
 		*)
 			err 1 "${MAGENTA}Unknown carp state: ${state}${NORMAL}"

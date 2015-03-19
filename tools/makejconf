@@ -144,6 +144,11 @@ if [ ${vnet} -eq 0 ]; then
 				continue
 			fi
 
+			cbsd carpcfg mode=getip vhid=${VHID} > /dev/null 2>&1
+
+			vhid_set=$?
+
+			[ ${vhid_set} -eq 1 ] && continue
 
 			a=$( carpcfg inter=0 mode=show vhid=${VHID} ip=${IWM} )
 			_res=$?

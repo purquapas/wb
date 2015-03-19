@@ -151,7 +151,6 @@ fi
 [ "${osname}" = "freebsd" ] && is_freebsd=1
 
 makejconf jname=${jname} out=${ftmpdir}/${jname}.conf epair=${myepair}b fbsd=${is_freebsd} is_stop=1
-cp ${ftmpdir}/${jname}.conf /
 
 eval multiips4=\"\$ip\"
 [ $baserw -eq 1 ] && path=$data

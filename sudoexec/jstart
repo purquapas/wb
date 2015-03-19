@@ -357,6 +357,7 @@ if [ -n "${interface}" -a "${interface}" != "0" -a "${vnet}" -eq "0" ]; then
 	for ips in ${IPS}; do
 		iptype "${ips}" ||true
 		[ -z "${IWM}" ] && continue
+		[ -n "${VHID}" ] && continue
 		#prevent to use nodeip
 		[ "${IWM}" = "${nodeip}" ] && err 1 "${MAGENTA}Error: Jail can not take nodeip when interface is not equal 0: ${GREEN}${nodeip}${NORMAL}"
 		checkip ip=${IWM} check=1
