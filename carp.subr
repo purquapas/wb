@@ -71,6 +71,21 @@ check_vhid()
 	sqllist "${_res}" id vhid advskew pass interface state
 }
 
+
+# return jname list who have vhid = $1
+get_jname_by_vhid()
+{
+	[ -z "${1}" ] && return 1
+	local vhid="${1}"
+	local pattern="vhid_${vhid}#"
+	local jname
+
+	jname=$( cbsdsql local SELECT jname FROM jails WHERE ip4_addr LIKE \"%${pattern}%\" AND emulator != \"bhyve\" | /usr/bin/xargs )
+
+	[ -n "${jname}" ] && echo "${jname}"
+}
+
+
 check_interface()
 {
 	local _res
