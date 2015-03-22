@@ -238,7 +238,7 @@ phase2()
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/cbsd_dot ${miscdir}/cbsd_dot
 
 	[ ! -f "${distdir}/misc/popcnttest" ] && /usr/bin/cc ${distdir}/misc/src/popcnttest.c -o ${distdir}/misc/popcnttest -msse4.2 > /dev/null 2>&1 || /usr/bin/true
-	[ -f "${miscdir}/popcnttest" ] && installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/popcnttest ${miscdir}/popcnttest
+	[ -f "${miscdir}/popcnttest" -a -f "${dstdir}/misc/popcnttest" ] && installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/popcnttest ${miscdir}/popcnttest
 
 	[ ! -f "${distdir}/misc/chk_arp_byip" ] && /usr/bin/cc ${distdir}/misc/src/chk_arp_byip.c -o ${distdir}/misc/chk_arp_byip
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/chk_arp_byip ${miscdir}/chk_arp_byip
