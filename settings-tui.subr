@@ -398,7 +398,7 @@ get_construct_interface()
 	retval=$?
 
 	case $retval in
-		0)
+		${DIALOG_OK})
 			case "${mtag}" in
 				"-"|"EXIT")
 					return 1
@@ -804,7 +804,7 @@ get_construct_arch()
 	retval=$?
 
 	case $retval in
-		0)
+		${DIALOG_OK})
 			if [ -n "${mtag}" ]; then
 				arch="${mtag}"
 			else
@@ -836,7 +836,7 @@ get_construct_vm_hostbridge()
 	retval=$?
 
 	case $retval in
-		0)
+		${DIALOG_OK})
 			[ -n "${mtag}" ] && vm_hostbridge="${mtag}"
 			;;
 		*)
@@ -864,7 +864,7 @@ get_construct_vm_guestfs()
 	retval=$?
 
 	case $retval in
-		0)
+		${DIALOG_OK})
 			[ -n "${mtag}" ] && vm_guestfs="${mtag}"
 			;;
 		*)
@@ -892,7 +892,7 @@ get_construct_vm_boot()
 	retval=$?
 
 	case $retval in
-		0)
+		${DIALOG_OK})
 			[ -n "${mtag}" ] && vm_boot="${mtag}"
 			;;
 		*)
@@ -920,7 +920,7 @@ get_construct_vm_os_type()
 	retval=$?
 
 	case $retval in
-		0)
+		${DIALOG_OK})
 			[ -n "${mtag}" ] && vm_os_type="${mtag}"
 			;;
 		*)
@@ -971,7 +971,7 @@ get_construct_vm_os_profile()
 	retval=$?
 
 	case $retval in
-		0)
+		${DIALOG_OK})
 			vm_os_profile="${mtag}"
 			_num=0
 			_myfile=$( while [ ${_num} -ne ${_all} ]; do
@@ -1027,11 +1027,11 @@ get_construct_profile()
 	if [ -z "${1}" ]; then
 		cbsd_menubox
 		case $retval in
-		0)
-			[ -n "${mtag}" ] && profile="${mtag}"
-			;;
-		*)
-			;;
+			${DIALOG_OK})
+				[ -n "${mtag}" ] && profile="${mtag}"
+				;;
+			*)
+				;;
 		esac
 	else
 		profile="${1}"
