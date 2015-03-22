@@ -108,7 +108,7 @@ dialog_menu_main()
 	inc_menu_index item_num
 	menu_list="${menu_list} '${item_num} GO'	'PROCEED!'	'PROCEED!'"
 
-	cbsd_menubox
+	cbsd_menubox_with_help
 	retval=$?
 
 	f_dialog_data_sanitize menu_choice

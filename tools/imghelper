@@ -47,8 +47,11 @@ dialog_menu_main()
 	local btitle="$DIALOG_BACKTITLE"
 	local prompt="Use menu for select and edit limit"
 	local hline=
+	local defaultitem=
 
 	local mytargets=
+
+	f_dialog_default_fetch defaultitem
 
 	[ -n "${jname}" ] && mytargets="for ${jname} "
 
@@ -69,39 +72,13 @@ dialog_menu_main()
 
 	menu_list="${menu_list} 'COMMIT'	'Save changes and quit'	'Save!'"
 
-	local height width rows
-	eval f_dialog_menu_with_help_size height width rows \
-		\"\$title\"  \
-		\"\$btitle\" \
-		\"\$prompt\" \
-		\"\$hline\"  \
-		$menu_list
+	cbsd_menubox
+	retval=$?
 
-	# Obtain default-item from previously stored selection
-	f_dialog_default_fetch defaultitem
+	f_dialog_data_sanitize menu_choice
+	f_dialog_menutag_store "$menu_choice"
+	f_dialog_default_store "$menu_choice"
 
-	mtag=$( eval $DIALOG \
-		--clear                                 \
-		--title \"\$title\"                     \
-		--backtitle \"\$btitle\"                \
-		--hline \"\$hline\"                     \
-		--item-help                             \
-		--ok-label \"\$msg_ok\"                 \
-		--cancel-label \"Exit\"                 \
-		${USE_XDIALOG:+--help \"\"}             \
-		--default-item \"\$defaultitem\"        \
-		--menu \"\$prompt\"                     \
-		$height $width $rows                    \
-		$menu_list                              \
-		2>&1 >&$DIALOG_TERMINAL_PASSTHRU_FD
-	)
-
-	local retval=$?
-	f_dialog_data_sanitize mtag
-	f_dialog_menutag_store "$mtag"
-
-	# Only update default-item on success
-	[ $retval -eq $DIALOG_OK ] && f_dialog_default_store "$mtag"
 	return $retval
 }
 
