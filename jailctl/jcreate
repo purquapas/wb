@@ -1,5 +1,5 @@
 #!/usr/local/bin/cbsd
-#v10.1.2
+#v10.1.5
 MYARG="jconf"
 MYOPTARG="inter ver arch customskel fstablocal delpkglist removejconf pkglist"
 MYDESC="Create jail from config file"
@@ -128,9 +128,15 @@ fi
 ${SYSRC_CMD} -qf ${temprcconf} arch="${arch}" > /dev/null
 ${SYSRC_CMD} -qf ${temprcconf} ver="${ver}" > /dev/null
 
+# update with normalize path
+${SYSRC_CMD} -qf ${temprcconf} path="${path}" > /dev/null
+${SYSRC_CMD} -qf ${temprcconf} mount_fstab="${mount_fstab}" > /dev/null
+${SYSRC_CMD} -qf ${temprcconf} rcconf="${rcconf}" > /dev/null
+${SYSRC_CMD} -qf ${temprcconf} data="${data}" > /dev/null
+
 /bin/cp $temprcconf $rcconf
 
-[ -n "${fstablocal}" -a -f "${fstablocal}" ] && cp ${fstablocal} ${jailfstabdir}/${jailfstabpref}${jname}.local
+[ -n "${fstablocal}" -a -f "${fstablocal}" ] && /bin/cp ${fstablocal} ${jailfstabdir}/${jailfstabpref}${jname}.local
 
 # Finnaly export to SQLite
 jregister jname=${jname} mode=new status=3

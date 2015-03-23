@@ -332,13 +332,10 @@ validate_jname()
 # data=$( normalize_path ${data} )
 normalize_path()
 {
-	local _res
-	echo ${1} |grep -sq ^/
-	if [ $? -eq 1 ]; then
-		_res="${workdir}/${1}"
-	else
-		_res="${1}"
-	fi
+	local _res prefix
+
+	prefix=$( substr --pos=0 --len=1 --str=${1} )
+	[ "${prefix}" != "/" ] && _res="${workdir}/${1}"
 	echo "${_res}"
 }
 
