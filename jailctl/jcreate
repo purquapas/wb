@@ -138,12 +138,14 @@ ${SYSRC_CMD} -qf ${temprcconf} mount_fstab="${mount_fstab}" > /dev/null
 ${SYSRC_CMD} -qf ${temprcconf} rcconf="${rcconf}" > /dev/null
 ${SYSRC_CMD} -qf ${temprcconf} data="${data}" > /dev/null
 
+echo "/bin/cp $temprcconf $rcconf"
 /bin/cp $temprcconf $rcconf
 
 [ -n "${fstablocal}" -a -f "${fstablocal}" ] && /bin/cp ${fstablocal} ${jailfstabdir}/${jailfstabpref}${jname}.local
 
 # Finnaly export to SQLite
 jregister jname=${jname} mode=new status=3
+
 res=$?
 
 # pkg bootstrap && user accounting
