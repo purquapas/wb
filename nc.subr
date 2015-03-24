@@ -334,8 +334,12 @@ normalize_path()
 {
 	local _res prefix
 
-	prefix=$( substr --pos=0 --len=1 --str=${1} )
-	[ "${prefix}" != "/" ] && _res="${workdir}/${1}"
+	prefix=$( substr --pos=0 --len=1 --str="${1}" )
+	if [ "${prefix}" != "/" ]; then
+		_res="${workdir}/${1}"
+	else
+		_res="${1}"
+	fi
 	echo "${_res}"
 }
 

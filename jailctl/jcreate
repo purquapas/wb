@@ -61,6 +61,10 @@ else
 fi
 
 . ${temprcconf}
+# re-read default tpl for apply dynamic variable with $jname
+readconf jail-freebsd-default.conf
+. ${temprcconf}
+
 over="${ver}"
 . ${buildconf}
 
