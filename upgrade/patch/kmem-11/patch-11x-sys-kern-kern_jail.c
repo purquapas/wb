@@ -1,6 +1,6 @@
---- kern_jail.c.orig	2015-03-09 13:43:19.652601000 +0300
-+++ kern_jail.c	2015-03-09 13:46:29.527334000 +0300
-@@ -209,6 +209,8 @@
+--- kern_jail.c.orig	2015-04-03 14:53:48.914366000 +0300
++++ kern_jail.c	2015-04-03 14:58:10.864094000 +0300
+@@ -205,6 +205,8 @@
  	"allow.mount.procfs",
  	"allow.mount.tmpfs",
  	"allow.mount.fdescfs",
@@ -9,7 +9,7 @@
  };
  const size_t pr_allow_names_size = sizeof(pr_allow_names);
  
-@@ -226,6 +228,8 @@
+@@ -222,6 +224,8 @@
  	"allow.mount.noprocfs",
  	"allow.mount.notmpfs",
  	"allow.mount.nofdescfs",
@@ -18,7 +18,7 @@
  };
  const size_t pr_allow_nonames_size = sizeof(pr_allow_nonames);
  
-@@ -4002,6 +4006,27 @@
+@@ -3998,6 +4002,27 @@
  		return (0);
  
  		/*
@@ -31,7 +31,7 @@
 +		if (cred->cr_prison->pr_allow & PR_ALLOW_DEV_IO_ACCESS)
 +			return (0);
 +		else
-+		return (EPERM);
++			return (EPERM);
 +
 +		/*
 +		* Allow low level access to DRI. This allows Xorgs to use DRI.
@@ -46,7 +46,7 @@
  		 * Allow jailed root to set loginclass.
  		 */
  	case PRIV_PROC_SETLOGINCLASS:
-@@ -4301,6 +4326,14 @@
+@@ -4297,6 +4322,14 @@
      CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_MPSAFE,
      NULL, PR_ALLOW_MOUNT_ZFS, sysctl_jail_default_allow, "I",
      "Processes in jail can mount the zfs file system");
@@ -61,7 +61,7 @@
  
  static int
  sysctl_jail_default_level(SYSCTL_HANDLER_ARGS)
-@@ -4447,6 +4480,10 @@
+@@ -4443,6 +4476,10 @@
      "B", "Jail may set file quotas");
  SYSCTL_JAIL_PARAM(_allow, socket_af, CTLTYPE_INT | CTLFLAG_RW,
      "B", "Jail may create sockets other than just UNIX/IPv4/IPv6/route");
