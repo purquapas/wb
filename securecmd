@@ -108,4 +108,6 @@ unmountfstab \
 upgrade \
 world \
 zrep \
-vhidcfg-tui"
+vhidcfg-tui \
+xconstruct-tui"
+

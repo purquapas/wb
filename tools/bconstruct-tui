@@ -2,7 +2,7 @@
 #v10.1.0
 MYARG=""
 MYOPTARG="mode"
-MYDESC="Ncurses based jail creation wizard"
+MYDESC="Ncurses based Bhyve guest creation wizard"
 EXTHELP="wf_bcreate.html"
 ADDHELP="mode=full for all atributes\n"
 

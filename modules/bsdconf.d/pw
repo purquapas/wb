@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/local/bin/cbsd
 #v11.0.0
 globalconf="${workdir}/cbsd.conf"
 CBSDMODULE="bsdconf"
