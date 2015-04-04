@@ -1,7 +1,7 @@
 #!/bin/sh
 #v10.0.0
 # Add allow_kmem into scheme
-
+: ${distdir="/usr/local/cbsd"}
 unset workdir
 
 # MAIN
