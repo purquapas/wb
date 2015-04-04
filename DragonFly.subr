@@ -12,5 +12,7 @@ MOUNT_NULL_CMD="/sbin/mount_null"
 NULLFS="null"
 PKG_DEFAULT_REPO="repo-Avalon.sqlite"
 
+MORE_CMD="/usr/bin/more"
+
 ###
 fi

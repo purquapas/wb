@@ -27,7 +27,7 @@ get_jid() {
 err() {
 	exitval=$1
 	shift
-	echo -e "$*"
+	${ECHO} "$*"
 	# 1>&2
 	exit $exitval
 }
@@ -127,10 +127,10 @@ getyesno()
 	fi
 
 	if [ -z "${DIALOG}" ]; then
-		echo -e "${BOLD}${1}${NORMAL}"
+		${ECHO} "${BOLD}${1}${NORMAL}"
 		answ=
 		while [ x$answ = x ]; do
-			echo -e "[${GREEN}yes(1) or no(0)${NORMAL}]"
+			${ECHO} "[${GREEN}yes(1) or no(0)${NORMAL}]"
 			read reply leftover
 			case $reply in
 				# "yes", "true", "on", or "1"

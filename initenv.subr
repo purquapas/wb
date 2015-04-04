@@ -290,7 +290,7 @@ get_initenv_nodeip()
 # form for $nodeip
 get_initenv_nodedescr()
 {
-
+	echo
 }
 
 

@@ -173,12 +173,7 @@ phaseX()
 
 phase1()
 {
-	local cbsd_home platform
-	. ${distdir}/${localcbsdconffile}
-
-	platform=$( /usr/bin/uname -s )
-
-	[ -f "${distdir}/${platform}.subr" ] && . ${distdir}/${platform}.subr
+	local cbsd_home
 
 	${ECHO} "${MAGENTA}[Stage 1:${GREEN} account & dir hier${MAGENTA}]${NORMAL}"
 	/usr/bin/id ${cbsduser} > /dev/null 2>&1
@@ -671,7 +666,8 @@ start()
 		. "${INITCFG}" 2>/dev/null
 	fi
 
-	ECHO="echo -e"
+	[ -z "${ECHO}" ] && ECHO="echo -e"
+
 	if [ -z "${workdir}" ]; then
 		. /etc/rc.conf
 		if [ -n "${cbsd_workdir}" ]; then
@@ -691,7 +687,7 @@ start()
 		exit 1
 	fi
 
-	/usr/bin/more << EOF_HEADER
+	${MORE_CMD} << EOF_HEADER
 -------[${product} v.${myversion}]-------
  This is install/upgrade scripts for ${product}.
  Don't forget to backup.
@@ -760,7 +756,6 @@ EOF_HEADER
 # export LOCK_CMD
 init_lock()
 {
-
 	if [ -x /usr/bin/lockf ]; then
 		LOCK_CMD="/usr/bin/lockf -t0 -s "
 	elif [ -x /usr/bin/flock ]; then
@@ -777,6 +772,14 @@ init_lock()
 
 ### MAIN ###
 init_lock
+
+set -e
+. ${distdir}/${localcbsdconffile}
+set +e
+
+platform=$( uname -s )
+
+[ -f "${distdir}/${platform}.subr" ] && . ${distdir}/${platform}.subr
 
 if [ $# -ne 1 ]; then
 	if [ "${inter}" = "0" ]; then
