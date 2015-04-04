@@ -14,6 +14,7 @@ MOUNT_NULL_CMD="/sbin/mount_nullfs"
 NULLFS="nullfs"
 
 MORE_CMD="/usr/bin/more"
+TOUCH_CMD="/usr/bin/touch"
 
 ###
 fi

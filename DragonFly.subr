@@ -13,6 +13,7 @@ NULLFS="null"
 PKG_DEFAULT_REPO="repo-Avalon.sqlite"
 
 MORE_CMD="/usr/bin/more"
+TOUCH_CMD="/usr/bin/touch"
 
 ###
 fi

@@ -144,6 +144,8 @@ phase0()
 	. ${distdir}/${localcbsdconffile}
 	newver="${myversion}"
 
+	[ ! -f /etc/rc.conf ] && ${TOUCH_CMD} /etc/rc.conf
+
 	. /etc/rc.conf
 
 	[ -z "${cbsdd_enable}" -o -z "${cbsd_workdir}" ] && return 0
