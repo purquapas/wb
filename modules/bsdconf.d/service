@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/local/bin/cbsd
 #v11.0.0
 globalconf="${workdir}/cbsd.conf"
 CBSDMODULE="bsdconf"
@@ -9,10 +9,6 @@ ADDHELP="jname= work in with jail\n\
 mode=list - show service list but apply IGNORE_SERVICES list from srvbrowser.conf\n\
 baseonly=1 - show services only from FreeBSD distribition (use basejail dir)\n"
 EXTHELP="modules/bsdconf.d.html"
-
-set -e
-. ${globalconf}
-set +e
 
 . ${subr}
 . ${strings}
