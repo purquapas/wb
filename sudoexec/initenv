@@ -782,6 +782,7 @@ set +e
 
 platform=$( uname -s )
 
+[ -f "${distdir}/cmd.subr" ] && . ${distdir}/cmd.subr
 [ -f "${distdir}/${platform}.subr" ] && . ${distdir}/${platform}.subr
 
 if [ $# -ne 1 ]; then
