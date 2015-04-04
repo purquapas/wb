@@ -41,8 +41,8 @@ workdir="${cbsd_workdir}"
 
 [ ! -f "${workdir}/cbsd.conf" ] && exit
 
-. "${workdir}/cbsd.conf"
-. "${distdir}/tools.subr"
+. ${distdir}/cbsd.conf
+. ${distdir}/tools.subr
 test_sql_stuff
 
 [ ! -f "${inventory}" ] && exit

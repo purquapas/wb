@@ -777,7 +777,7 @@ init_lock()
 init_lock
 
 set -e
-. ${distdir}/${localcbsdconffile}
+. ${distdir}/cbsd.conf
 set +e
 
 platform=$( uname -s )
