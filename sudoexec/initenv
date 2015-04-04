@@ -757,12 +757,32 @@ EOF_HEADER
 	exit 0
 }
 
+# export LOCK_CMD
+init_lock()
+{
+
+	if [ -x /usr/bin/lockf ]; then
+		LOCK_CMD="/usr/bin/lockf -t0 -s "
+	elif [ -x /usr/bin/flock ]; then
+		LOCK_CMD="/usr/bin/flock -w0 -s "
+	fi
+
+	if [ -z "${LOCK_CMD}" ]; then
+		echo "No such lock management stuff (lockf, flock)"
+		exit 0
+	fi
+}
+
+
+
 ### MAIN ###
+init_lock
+
 if [ $# -ne 1 ]; then
 	if [ "${inter}" = "0" ]; then
-		/usr/bin/lockf -t0 -s ${MYLOCK} env INITCFG="${INITCFG}" $0 inter=0 start
+		${LOCK_CMD} ${MYLOCK} env INITCFG="${INITCFG}" $0 inter=0 start
 	else
-		/usr/bin/lockf -t0 -s ${MYLOCK} env INITCFG="${INITCFG}" $0 start
+		${LOCK_CMD} ${MYLOCK} env INITCFG="${INITCFG}" $0 start
 	fi
 fi
 
