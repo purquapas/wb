@@ -20,7 +20,7 @@ zrep_bootstrap()
 
 	/sbin/zfs >$zrep_checkfile 2>&1
 
-	if /usr/bin/grep 'help' $zrep_checkfile >/dev/null ; then
+	if ${GREP_CMD} 'help' $zrep_checkfile >/dev/null ; then
 		Z_HAS_X=1         # can use recv -x
 		Z_HAS_SNAPPROPS=1 # can set properties on snapshots
 				# This also lets me set accurate "last synced" timestamps
@@ -28,18 +28,18 @@ zrep_bootstrap()
 				# would lose it on rollbacks
 		DEPTHCAP="-d 1" # limits "list -r"
 	else
-		if /usr/bin/grep 'receive.*-x' $zrep_checkfile >/dev/null ; then
+		if ${GREP_CMD} 'receive.*-x' $zrep_checkfile >/dev/null ; then
 			Z_HAS_X=1         # can use recv -x
 		else
 			Z_HAS_X=0
 		fi
-		if /usr/bin/grep 'set.*snapshot' $zrep_checkfile >/dev/null ; then
+		if ${GREP_CMD} 'set.*snapshot' $zrep_checkfile >/dev/null ; then
 			Z_HAS_SNAPPROPS=1 # can set properties on snapshots
 		else
 			Z_HAS_SNAPPROPS=0
 			PROPTYPES="local"
 		fi
-		if /usr/bin/grep 'list.*-d' $zrep_checkfile >/dev/null ; then
+		if ${GREP_CMD} 'list.*-d' $zrep_checkfile >/dev/null ; then
 			DEPTHCAP="-d 1" # limits "list -r"
 		else
 			DEPTHCAP=""
@@ -514,7 +514,7 @@ list_autosnaps()
 {
 	[ -z "$1" ] && zrep_errquit "zrep internalerror: no arg for list_autosnaps"
 	/sbin/zfs list $DEPTHCAP -r -H -o name -t snapshot $1 |
-		/usr/bin/grep '@zrep_[0-9a-f][0-9a-f]'
+		${GREP_CMD} '@zrep_[0-9a-f][0-9a-f]'
 	# Make sure this format matches other routines in here
 	# Okay to just check first few digits though
 }
@@ -648,7 +648,7 @@ zrep_clear()
 
 	${ECHO} "${MAGENTA}Removing zrep-related properties from: ${GREEN}${dataset}${NORMAL}"
 
-	proplist=$( /sbin/zfs get -H -o property all ${dataset}|/usr/bin/grep zrep: )
+	proplist=$( /sbin/zfs get -H -o property all ${dataset}|${GREP_CMD} zrep: )
 
 	for prop in $proplist ; do
 		/sbin/zfs inherit $prop ${dataset}
@@ -702,7 +702,7 @@ setfsconfigs()
 
 cbsd_remote_node_init()
 {
-	remote_workdir=$( rexe node=${node} tryoffline=1 /usr/sbin/pw usershow ${cbsduser} | /usr/bin/cut -d : -f 9 |/usr/bin/tr -d \\r |/usr/bin/grep ^/ )
+	remote_workdir=$( rexe node=${node} tryoffline=1 /usr/sbin/pw usershow ${cbsduser} | /usr/bin/cut -d : -f 9 |/usr/bin/tr -d \\r |${GREP_CMD} ^/ )
 	[ -z "${remote_workdir}" ] && err 1 "${MAGENTA}Can't determine workdir for: ${GREEN}${node}${MAGENTA}. Check for node connectivity via root/keyfile${NORMAL}"
 
 	remote_jaildatadir="${remote_workdir}/jails-data"

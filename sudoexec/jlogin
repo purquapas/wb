@@ -123,7 +123,7 @@ jexec="/usr/bin/nice -n ${nice} ${SETFIB} ${CPUSET} /usr/sbin/jexec ${jid} ${LOG
 init_tmux
 
 if [ $tmux_login -eq 1 ]; then
-	${tmuxcmd} list-sessions | /usr/bin/grep -qwF "${session_name}:"
+	${tmuxcmd} list-sessions | ${GREP_CMD} -qwF "${session_name}:"
 	if [ $? -eq 1 ]; then
 		${tmuxcmd} new -s "${session_name}" "eval ${jexec}"
 	else

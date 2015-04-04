@@ -187,7 +187,7 @@ phase1()
 	fi
 
 	# check for correct homedir
-	cbsd_home=$( /usr/bin/grep ^cbsd /etc/master.passwd | /usr/bin/cut -d : -f 9 )
+	cbsd_home=$( ${GREP_CMD} ^cbsd /etc/master.passwd | /usr/bin/cut -d : -f 9 )
 
 	[ "${cbsd_home}" != "${workdir}" ] && /usr/sbin/pw usermod ${cbsduser} -d ${workdir} >/dev/null 2>&1
 
@@ -205,45 +205,45 @@ phase2()
 
 	platform=$( /usr/bin/uname -s )
 
-	[ ! -f "${distdir}/bin/cbsdsftp" ] && /usr/bin/cc ${distdir}/bin/cbsdsftp.c -o ${distdir}/bin/cbsdsftp -lssh2 -L/usr/local/lib -I/usr/local/include
+	[ ! -f "${distdir}/bin/cbsdsftp" ] && ${CC_CMD} ${distdir}/bin/cbsdsftp.c -o ${distdir}/bin/cbsdsftp -lssh2 -L/usr/local/lib -I/usr/local/include
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/bin/cbsdsftp ${bindir}/cbsdsftp
 	
-	[ ! -f "${distfir}/bin/cbsdssh" ] && /usr/bin/cc ${distdir}/bin/cbsdssh.c -o ${distdir}/bin/cbsdssh -lssh2 -L/usr/local/lib -I/usr/local/include
+	[ ! -f "${distfir}/bin/cbsdssh" ] && ${CC_CMD} ${distdir}/bin/cbsdssh.c -o ${distdir}/bin/cbsdssh -lssh2 -L/usr/local/lib -I/usr/local/include
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/bin/cbsdssh ${bindir}/cbsdssh
 
 	installne "-o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/bin/rexe ${bindir}/rexe
 
-	[ ! -f "${distdir}/sbin/netmask" ] && /usr/bin/cc ${distdir}/sbin/netmask.c -o ${distdir}/sbin/netmask
+	[ ! -f "${distdir}/sbin/netmask" ] && ${CC_CMD} ${distdir}/sbin/netmask.c -o ${distdir}/sbin/netmask
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/sbin/netmask ${sbindir}/netmask
 
-	[ ! -f "${distdir}/misc/sqlcli" ] && /usr/bin/cc ${distdir}/misc/src/sqlcli.c -lsqlite3 -L/usr/local/lib -I/usr/local/include -o ${distdir}/misc/sqlcli
+	[ ! -f "${distdir}/misc/sqlcli" ] && ${CC_CMD} ${distdir}/misc/src/sqlcli.c -lsqlite3 -L/usr/local/lib -I/usr/local/include -o ${distdir}/misc/sqlcli
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 500" ${distdir}/misc/sqlcli ${miscdir}/sqlcli
 
-	[ ! -f "${distdir}/misc/cbsdlogtail" ] && /usr/bin/cc ${distdir}/misc/src/cbsdlogtail.c -o ${distdir}/misc/cbsdlogtail
+	[ ! -f "${distdir}/misc/cbsdlogtail" ] && ${CC_CMD} ${distdir}/misc/src/cbsdlogtail.c -o ${distdir}/misc/cbsdlogtail
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/cbsdlogtail ${miscdir}/cbsdlogtail
 
-	[ ! -f "${distdir}/misc/elf_tables" ] && /usr/bin/cc -I/usr/local/include -I/usr/local/include/libelf -L/usr/local/lib ${distdir}/misc/src/elf_tables.c -lelf -o ${distdir}/misc/elf_tables
+	[ ! -f "${distdir}/misc/elf_tables" ] && ${CC_CMD} -I/usr/local/include -I/usr/local/include/libelf -L/usr/local/lib ${distdir}/misc/src/elf_tables.c -lelf -o ${distdir}/misc/elf_tables
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/elf_tables ${miscdir}/elf_tables
 
-	[ ! -f "${distdir}/misc/conv2human" ] && /usr/bin/cc -I/usr/local/include -I/usr/local/include/libelf -L/usr/local/lib ${distdir}/misc/src/conv2human.c -lelf -o ${distdir}/misc/conv2human -lutil
+	[ ! -f "${distdir}/misc/conv2human" ] && ${CC_CMD} -I/usr/local/include -I/usr/local/include/libelf -L/usr/local/lib ${distdir}/misc/src/conv2human.c -lelf -o ${distdir}/misc/conv2human -lutil
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/conv2human ${miscdir}/conv2human
 
-	[ ! -f "${distdir}/misc/cbsd_fwatch" ] && /usr/bin/cc ${distdir}/misc/src/cbsd_fwatch.c -o ${distdir}/misc/cbsd_fwatch
+	[ ! -f "${distdir}/misc/cbsd_fwatch" ] && ${CC_CMD} ${distdir}/misc/src/cbsd_fwatch.c -o ${distdir}/misc/cbsd_fwatch
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/cbsd_fwatch ${miscdir}/cbsd_fwatch
 
-	[ ! -f "${distdir}/misc/cbsd_dot" ] && /usr/bin/cc ${distdir}/misc/src/cbsd_dot.c -o ${distdir}/misc/cbsd_dot
+	[ ! -f "${distdir}/misc/cbsd_dot" ] && ${CC_CMD} ${distdir}/misc/src/cbsd_dot.c -o ${distdir}/misc/cbsd_dot
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/cbsd_dot ${miscdir}/cbsd_dot
 
-	[ ! -f "${distdir}/misc/popcnttest" ] && /usr/bin/cc ${distdir}/misc/src/popcnttest.c -o ${distdir}/misc/popcnttest -msse4.2 > /dev/null 2>&1 || /usr/bin/true
+	[ ! -f "${distdir}/misc/popcnttest" ] && ${CC_CMD} ${distdir}/misc/src/popcnttest.c -o ${distdir}/misc/popcnttest -msse4.2 > /dev/null 2>&1 || /usr/bin/true
 	[ -f "${miscdir}/popcnttest" -a -f "${dstdir}/misc/popcnttest" ] && installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/popcnttest ${miscdir}/popcnttest
 
-	[ ! -f "${distdir}/misc/chk_arp_byip" ] && /usr/bin/cc ${distdir}/misc/src/chk_arp_byip.c -o ${distdir}/misc/chk_arp_byip
+	[ ! -f "${distdir}/misc/chk_arp_byip" ] && ${CC_CMD} ${distdir}/misc/src/chk_arp_byip.c -o ${distdir}/misc/chk_arp_byip
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/chk_arp_byip ${miscdir}/chk_arp_byip
 
-	[ ! -f "${distdir}/misc/daemon" ] && /usr/bin/cc ${distdir}/misc/src/daemon.c -lutil -o ${distdir}/misc/daemon
+	[ ! -f "${distdir}/misc/daemon" ] && ${CC_CMD} ${distdir}/misc/src/daemon.c -lutil -o ${distdir}/misc/daemon
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/misc/daemon ${miscdir}/daemon
 
-	[ ! -f "${distdir}/tools/xo" ] && /usr/bin/cc ${distdir}/tools/src/xo.c -lxo -I/usr/include/libxo -I/usr/local/include/libxo -L/usr/local/lib -lxo -o ${distdir}/tools/xo
+	[ ! -f "${distdir}/tools/xo" ] && ${CC_CMD} ${distdir}/tools/src/xo.c -lxo -I/usr/include/libxo -I/usr/local/include/libxo -L/usr/local/lib -lxo -o ${distdir}/tools/xo
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/tools/xo ${toolsdir}/xo
 
 	if [ -f "/usr/local/bin/cbsd" ]; then
@@ -251,7 +251,7 @@ phase2()
 		if [ "${CURVERSION}" != "${myversion}" ]; then
 			make -C ${distdir}/bin/cbsdsh clean && make -DCBSDVERSION="${ncver}" -C ${distdir}/bin/cbsdsh
 			# force rebuild sqlscli too to avoid possible SQLite3 link error
-			/usr/bin/cc ${distdir}/misc/src/sqlcli.c -lsqlite3 -L/usr/local/lib -I/usr/local/include -o ${distdir}/misc/sqlcli
+			${CC_CMD} ${distdir}/misc/src/sqlcli.c -lsqlite3 -L/usr/local/lib -I/usr/local/include -o ${distdir}/misc/sqlcli
 			installne "-s -o ${cbsduser} -g ${cbsduser} -m 500" ${distdir}/misc/sqlcli ${miscdir}/sqlcli
 		fi
 	else
@@ -438,7 +438,7 @@ phase4()
 
 	for i in $(${ECHO} $jnameserver | /usr/bin/tr "," " "); do
 		if [ -f "${sharedir}/${platform}-jail-skel/etc/resolv.conf" ]; then
-			if [ $( /usr/bin/grep -c ${i} ${sharedir}/${platform}-jail-skel/etc/resolv.conf ) = 0 ]; then
+			if [ $( ${GREP_CMD} -c ${i} ${sharedir}/${platform}-jail-skel/etc/resolv.conf ) = 0 ]; then
 				TMPR="${ftmpdir}/resolv.$$"
 				# system nserver must be always last
 				${ECHO} "nameserver ${i}" > ${TMPR}
@@ -608,7 +608,7 @@ phase7()
 		_moduledir="${moduledir}/"
 		_modulename="${_dst#$_moduledir}"
 		
-		/usr/bin/grep "^${_modulename}" ${etcdir}/modules.conf >/dev/null 2>&1
+		${GREP_CMD} "^${_modulename}" ${etcdir}/modules.conf >/dev/null 2>&1
 		if [ $? -eq 1 ]; then
 			${ECHO} "${MAGENTA}Removing module ${_modulename} cmd: ${GREEN}${_dst}${NORMAL}"
 			/bin/rm -f ${_lnk}
@@ -718,7 +718,7 @@ EOF_HEADER
 
 	configure_rsync
 
-	if [ $( /usr/bin/grep ^cbsdd_enable= /etc/rc.conf|/usr/bin/wc -l ) = 0 ]; then
+	if [ $( ${GREP_CMD} ^cbsdd_enable= /etc/rc.conf|/usr/bin/wc -l ) = 0 ]; then
 		getyesno "Shall i modify the /etc/rc.conf to sets cbsdd_enable=YES ?" && ${SYSRC_CMD} -vf /etc/rc.conf cbsdd_enable=YES
 	fi
 
@@ -726,7 +726,7 @@ EOF_HEADER
 
 	if [ ${baseelf} -lt 1000510 ]; then
 		# only for FreeBSD 10.0, not for 10.0+
-		if [ $( /usr/bin/grep ^devfs_load_rulesets= /etc/rc.conf|/usr/bin/wc -l ) = 0 ]; then
+		if [ $( ${GREP_CMD} ^devfs_load_rulesets= /etc/rc.conf|/usr/bin/wc -l ) = 0 ]; then
 			#we need initialization of ruleset for proper view on dev in jail
 			if getyesno "Shall i modify the /etc/rc.conf to sets devfs_load_rulesets=YES?"; then
 				${SYSRC_CMD} -vf /etc/rc.conf devfs_load_rulesets=YES
@@ -740,11 +740,11 @@ EOF_HEADER
 		getyesno "Shall i modify the /etc/rc.conf to sets cbsd_workdir=\"${workdir}\"?: $p" && ${SYSRC_CMD} -vf /etc/rc.conf cbsd_workdir="${workdir}"
 	fi
 
-	if [ $( /usr/bin/grep ^rcshutdown_timeout= /etc/rc.conf|/usr/bin/wc -l ) = 0 ]; then
+	if [ $( ${GREP_CMD} ^rcshutdown_timeout= /etc/rc.conf|/usr/bin/wc -l ) = 0 ]; then
 		getyesno "Shall i modify the /etc/rc.conf to sets rcshutdown_timeout=\"900\"?" && ${SYSRC_CMD} -vf /etc/rc.conf rcshutdown_timeout="900"
 	fi
 
-	if [ $( /usr/bin/grep ^sshd_flags= /etc/rc.conf|/usr/bin/wc -l ) = 0 ]; then
+	if [ $( ${GREP_CMD} ^sshd_flags= /etc/rc.conf|/usr/bin/wc -l ) = 0 ]; then
 		getyesno "Shall i modify default SSH daemon port from 22 to 22222 on this host via /etc/rc.conf and sshd_flags=\"-oPort=22222\" which is default for cbsd?" && ${SYSRC_CMD} -vf /etc/rc.conf sshd_flags="-oPort=22222"
 	fi
 

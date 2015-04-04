@@ -230,7 +230,7 @@ test_sql_stuff()
 
 	for _i in ${_files}; do
 		[ ! -f "${_i}" ] && continue
-		_res=$( /usr/bin/ldd ${_i} 2>/dev/null|/usr/bin/grep " not found " )
+		_res=$( /usr/bin/ldd ${_i} 2>/dev/null|${GREP_CMD} " not found " )
 		if [ -n "${_res}" ]; then
 			echo "WARNING: ${_i} is broken:"
 			echo "${_res}"
@@ -255,7 +255,7 @@ mkjhosts()
 	local _TMPH="${ftmpdir}/hosts.$$"
 
 	/bin/cp -a ${_JHOST} ${_TMPH}
-	/usr/bin/grep -v "${_tpl}" ${_TMPH} > ${_JHOST}
+	${GREP_CMD} -v "${_tpl}" ${_TMPH} > ${_JHOST}
 	echo "${_IP} ${host_hostname} # ${_tpl}" >> ${_JHOST}
 	/bin/rm -f ${_TMPH}
 }

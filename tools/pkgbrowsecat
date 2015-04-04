@@ -83,7 +83,7 @@ while :; do
 	case "$mtag" in
 		"EXIT")
 			/usr/bin/truncate -s0 ${CONTROLMASTER}
-			for i in $( printenv |/usr/bin/grep pkgmark_ ); do
+			for i in $( printenv |${GREP_CMD} pkgmark_ ); do
 				index=${i%%=*}
 				/usr/bin/zgrep "${index}_origin=" ${tmpdir}/pkg/${name}.idx.gz >> ${CONTROLMASTER}
 				echo "export ${i}" >> ${CONTROLMASTER}

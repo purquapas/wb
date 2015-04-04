@@ -371,12 +371,12 @@ bhyve_zfs_install()
 
 	# hack for remove all dirty zpool 
 	/bin/cat > ${mnttmp}/etc/rc.local <<EOF
-/sbin/zpool list | /usr/bin/grep UNAVAIL |/usr/bin/awk '{printf \$1"\n"}' |while read _zpool; do
+/sbin/zpool list | ${GREP_CMD} UNAVAIL |/usr/bin/awk '{printf \$1"\n"}' |while read _zpool; do
 /sbin/zpool destroy \${_zpool} >/dev/null 2>&1
 done
 
 # detect for swap
-FSWAP=\$( /sbin/gpart list | /usr/bin/grep -B50 "type: freebsd-swap" | /usr/bin/grep Name: | /usr/bin/tail -n1 |/usr/bin/awk '/Name:/{print \$3}' )
+FSWAP=\$( /sbin/gpart list | ${GREP_CMD} -B50 "type: freebsd-swap" | ${GREP_CMD} Name: | /usr/bin/tail -n1 |/usr/bin/awk '/Name:/{print \$3}' )
 
 if [ -n "\$FSWAP" ]; then
 	echo "/dev/\${FSWAP} none swap sw 0 0" > /etc/fstab

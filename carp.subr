@@ -21,11 +21,11 @@ get_ip4_by_vhid()
 	local _res
 
 	if [ -z "${ip}" ]; then
-		_res=$( /sbin/ifconfig ${interface}| /usr/bin/grep "inet *.*.*.* netmask [[:alnum:]]* *.*.*.* vhid ${1} "|/usr/bin/awk {'printf $2" "'} )
+		_res=$( /sbin/ifconfig ${interface}| ${GREP_CMD} "inet *.*.*.* netmask [[:alnum:]]* *.*.*.* vhid ${1} "|/usr/bin/awk {'printf $2" "'} )
 	else
 		ipwmask "${ip}"
 		[ -n "${IWM}" ] && ip="${IWM}"
-		_res=$( /sbin/ifconfig ${interface}| /usr/bin/grep "inet ${ip} netmask [[:alnum:]]* *.*.*.* vhid ${1} "|/usr/bin/awk {'printf $2" "'} )
+		_res=$( /sbin/ifconfig ${interface}| ${GREP_CMD} "inet ${ip} netmask [[:alnum:]]* *.*.*.* vhid ${1} "|/usr/bin/awk {'printf $2" "'} )
 	fi
 
 	[ -z "${_res}" ] && return 0

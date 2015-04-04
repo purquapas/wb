@@ -14,7 +14,7 @@ show_basels()
 	[ -z "${CBSDXO}" -a ${header} -eq 1 ] && $ECHO "${BOLD}NAME ARCH TARGET_ARCH VER${NORMAL}"
 	local IFS="_"
 
-	/bin/ls -1 ${basejaildir} |/usr/bin/grep ^${basejailpref}| while read name arch target_arch ver; do
+	/bin/ls -1 ${basejaildir} |${GREP_CMD} ^${basejailpref}| while read name arch target_arch ver; do
 		IFS=" "
 		[ -z "${CBSDXO}" ] && printf "${NORMAL}" # for column sort
 		${XO} ${CBSDXO} --open basels

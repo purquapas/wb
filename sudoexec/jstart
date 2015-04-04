@@ -246,17 +246,17 @@ unset_changes_20140930()
 
 	if grep "${_tpl}" ${data}/etc/make.conf >/dev/null 2>&1; then
 		cp -a ${data}/etc/make.conf ${data}/etc/make.conf.bak
-		/usr/bin/grep -v "${_tpl}" ${data}/etc/make.conf.bak |grep "." > ${data}/etc/make.conf
+		${GREP_CMD} -v "${_tpl}" ${data}/etc/make.conf.bak |grep "." > ${data}/etc/make.conf
 	fi
 
 	if grep "${_tpl}" ${data}/etc/profile >/dev/null 2>&1; then
 		cp -a ${data}/etc/profile ${data}/etc/profile.bak
-		/usr/bin/grep -v "${_tpl}" ${data}/etc/profile.bak |grep "." > ${data}/etc/profile
+		${GREP_CMD} -v "${_tpl}" ${data}/etc/profile.bak |grep "." > ${data}/etc/profile
 	fi
 
 	if grep "${_tpl}" ${data}/etc/csh.cshrc >/dev/null 2>&1; then
 		cp -a ${data}/etc/csh.cshrc ${data}/etc/csh.cshrc.bak
-		/usr/bin/grep -v "${_tpl}" ${data}/etc/csh.cshrc.bak | grep "." > ${data}/etc/csh.cshrc
+		${GREP_CMD} -v "${_tpl}" ${data}/etc/csh.cshrc.bak | grep "." > ${data}/etc/csh.cshrc
 	fi
 }
 

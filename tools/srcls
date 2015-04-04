@@ -16,7 +16,7 @@ show_srcls()
 
 	local IFS="_"
 
-	/bin/ls -1 ${srcdir} |/usr/bin/grep ^src| while read name ver; do
+	/bin/ls -1 ${srcdir} |${GREP_CMD} ^src| while read name ver; do
 		IFS=" "
 		[ -z "${CBSDXO}" ] && printf "${NORMAL}" # for column sort
 		${XO} ${CBSDXO} --open srcls
