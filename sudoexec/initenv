@@ -203,7 +203,7 @@ phase2()
 
 	${ECHO} "${MAGENTA}[Stage 2: ${GREEN}build tools${MAGENTA}]${NORMAL}"
 
-	platform=$( /usr/bin/uname -s )
+	platform=$( uname -s )
 
 	[ ! -f "${distdir}/bin/cbsdsftp" ] && ${CC_CMD} ${distdir}/bin/cbsdsftp.c -o ${distdir}/bin/cbsdsftp -lssh2 -L/usr/local/lib -I/usr/local/include
 	installne "-s -o ${cbsduser} -g ${cbsduser} -m 555" ${distdir}/bin/cbsdsftp ${bindir}/cbsdsftp
