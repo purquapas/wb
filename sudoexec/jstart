@@ -152,7 +152,7 @@ makeresolv()
 	if [ -f "${data}/etc/resolv.conf" ]; then
 		cat ${jailskeldir}/etc/resolv.conf |while read _line; do
 			[ -z "${_line}" ] && continue
-			sed -i '' "/${_line}/d" ${data}/etc/resolv.conf
+			/usr/bin/sed -i '' "/${_line}/d" ${data}/etc/resolv.conf
 		done
 	fi
 
