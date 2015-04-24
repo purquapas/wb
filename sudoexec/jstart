@@ -143,21 +143,6 @@ fwcounter()
 	/sbin/ipfw -q add ${FWNUM} count ip from me to any jail ${myjid} && echo ${FWNUM} > ${ftmpdir}/${jname}-fwout
 }
 
-makeresolv()
-{
-	local _line
-
-	[ ! -f "${jailskeldir}/etc/resolv.conf" ] && return 0
-
-	if [ -f "${data}/etc/resolv.conf" ]; then
-		cat ${jailskeldir}/etc/resolv.conf |while read _line; do
-			[ -z "${_line}" ] && continue
-			/usr/bin/sed -i '' "/${_line}/d" ${data}/etc/resolv.conf
-		done
-	fi
-
-	cat ${jailskeldir}/etc/resolv.conf >> ${data}/etc/resolv.conf
-}
 
 # check that the emulator is able to execute commands
 emulator_exec_check()
@@ -244,19 +229,19 @@ unset_changes_20140930()
 {
 	local _tpl="CBSD autotpl for CHANGES 20140930"
 
-	if grep "${_tpl}" ${data}/etc/make.conf >/dev/null 2>&1; then
-		cp -a ${data}/etc/make.conf ${data}/etc/make.conf.bak
-		${GREP_CMD} -v "${_tpl}" ${data}/etc/make.conf.bak |grep "." > ${data}/etc/make.conf
+	if ${GREP_CMD} "${_tpl}" ${data}/etc/make.conf >/dev/null 2>&1; then
+		/bin/cp -a ${data}/etc/make.conf ${data}/etc/make.conf.bak
+		${GREP_CMD} -v "${_tpl}" ${data}/etc/make.conf.bak | {GREP_CMD} "." > ${data}/etc/make.conf
 	fi
 
-	if grep "${_tpl}" ${data}/etc/profile >/dev/null 2>&1; then
-		cp -a ${data}/etc/profile ${data}/etc/profile.bak
-		${GREP_CMD} -v "${_tpl}" ${data}/etc/profile.bak |grep "." > ${data}/etc/profile
+	if ${GREP_CMD} "${_tpl}" ${data}/etc/profile >/dev/null 2>&1; then
+		/bin/cp -a ${data}/etc/profile ${data}/etc/profile.bak
+		${GREP_CMD} -v "${_tpl}" ${data}/etc/profile.bak | {GREP_CMD} "." > ${data}/etc/profile
 	fi
 
-	if grep "${_tpl}" ${data}/etc/csh.cshrc >/dev/null 2>&1; then
-		cp -a ${data}/etc/csh.cshrc ${data}/etc/csh.cshrc.bak
-		${GREP_CMD} -v "${_tpl}" ${data}/etc/csh.cshrc.bak | grep "." > ${data}/etc/csh.cshrc
+	if ${GREP_CMD} "${_tpl}" ${data}/etc/csh.cshrc >/dev/null 2>&1; then
+		/bin/cp -a ${data}/etc/csh.cshrc ${data}/etc/csh.cshrc.bak
+		${GREP_CMD} -v "${_tpl}" ${data}/etc/csh.cshrc.bak | {GREP_CMD} "." > ${data}/etc/csh.cshrc
 	fi
 }
 
@@ -422,7 +407,7 @@ fi
 
 # cp local default resolv.conf skel
 if [ ${floatresolv} -eq 1 -a "${ver}" != "empty" ]; then
-	makeresolv
+	makeresolv jname=${jname}
 fi
 
 if [ $applytpl -eq 1 -a "${ver}" != "empty" ]; then
