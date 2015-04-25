@@ -191,7 +191,7 @@ phase1()
 
 	[ "${cbsd_home}" != "${workdir}" ] && /usr/sbin/pw usermod ${cbsduser} -d ${workdir} >/dev/null 2>&1
 
-	[ ! -d "${workdir}" ] && mkdir -m 755 ${workdir}
+	[ ! -d "${workdir}" ] && /bin/mkdir -m 755 ${workdir}
 	$ECHO "${MAGENTA} * Check hier and permission..."
 	mtree -deU -f ${distdir}/etc/cbsd.mtree -p ${workdir}
 	printf "${NORMAL}"
@@ -379,24 +379,27 @@ EOF
 
 	if [ ! -f "/usr/local/etc/sudoers.d/cbsd_sudoers" ]; then
 		if getyesno "Shall i add cbsd user into /usr/local/etc/sudoers.d/cbsd_sudoers sudo file to obtian root privileges for the most cbsd commands?"; then
-			[ ! -d /usr/local/etc/sudoers.d ] && mkdir -p /usr/local/etc/sudoers.d
+			[ ! -d /usr/local/etc/sudoers.d ] && /bin/mkdir -p /usr/local/etc/sudoers.d
 			installne "-o root -g wheel -m 440" ${etcdir}/cbsd_sudoers /usr/local/etc/sudoers.d/cbsd_sudoers
 		fi
 	fi
 
-	#    [ -d ${sshdir} ] || mkdir -m 0700 ${sshdir}
-	#    [ -d "${sshdir}/sockets" ] || mkdir -m 0700 "${sshdir}/sockets"
+	#    [ -d ${sshdir} ] || /bin/mkdir -m 0700 ${sshdir}
+	#    [ -d "${sshdir}/sockets" ] || /bin/mkdir -m 0700 "${sshdir}/sockets"
 	[ -f "${sshdir}/config" ] || installne "-o ${cbsduser} -g ${cbsduser} -m 644" ${distdir}/.ssh/config ${sshdir}/config
 
 	# workaround for move jail-skel hier in cbsd 10.0.0
-	[ ! -d "${sharedir}/${platform}-jail-skel/etc" -a -d "${distdir}/share/${platform}-jail-skel" ] && mkdir -p ${sharedir}/${platform}-jail-skel && cp -a ${distdir}/share/${platform}-jail-skel/* ${sharedir}/${platform}-jail-skel/
+	[ ! -d "${sharedir}/${platform}-jail-skel/etc" -a -d "${distdir}/share/${platform}-jail-skel" ] && /bin/mkdir -p ${sharedir}/${platform}-jail-skel && cp -a ${distdir}/share/${platform}-jail-skel/* ${sharedir}/${platform}-jail-skel/
 	[ -f "${sharedir}/${platform}-jail-skel/etc/master.passwd" ] && chmod 0600 ${sharedir}/${platform}-jail-skel/etc/master.passwd ${sharedir}/${platform}-jail-skel/etc/spwd.db
 
 	# workaround for move jail-skel hier in cbsd 10.0.0
-	[ ! -d "${sharedir}/${platform}-jail-vnet-skel/etc" -a -d "${distdir}/share/${platform}-jail-vnet-skel" ] && mkdir -p ${sharedir}/${platform}-jail-vnet-skel && cp -a ${distdir}/share/${platform}-jail-vnet-skel/* ${sharedir}/${platform}-jail-vnet-skel/
+	[ ! -d "${sharedir}/${platform}-jail-vnet-skel/etc" -a -d "${distdir}/share/${platform}-jail-vnet-skel" ] && /bin/mkdir -p ${sharedir}/${platform}-jail-vnet-skel && cp -a ${distdir}/share/${platform}-jail-vnet-skel/* ${sharedir}/${platform}-jail-vnet-skel/
 	[ -f "${sharedir}/${platform}-jail-vnet-skel/etc/master.passwd" ] && chmod 0600 ${sharedir}/${platform}-jail-vnet-skel/etc/master.passwd ${sharedir}/${platform}-jail-vnet-skel/etc/spwd.db
 
-	cp -Rp ${distdir}/modules ${workdir}
+	[ ! -d "${sharedir}/${platform}-jail-puppet-skel/etc" -a -d "${distdir}/share/${platform}-jail-puppet-skel" ] && /bin/mkdir -p ${sharedir}/${platform}-jail-puppet-skel && cp -a ${distdir}/share/${platform}-jail-puppet-skel/* ${sharedir}/${platform}-jail-puppet-skel/
+	[ -f "${sharedir}/${platform}-jail-puppet-skel/etc/master.passwd" ] && chmod 0600 ${sharedir}/${platform}-jail-puppet-skel/etc/master.passwd ${sharedir}/${platform}-jail-puppet-skel/etc/spwd.db
+
+	/bin/cp -Rp ${distdir}/modules ${workdir}
 }
 
 phase3()
