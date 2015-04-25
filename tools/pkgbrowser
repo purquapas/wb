@@ -223,6 +223,12 @@ while :; do
 			else
 				echo "${pkglist}" >> ${controlmaster}
 			fi
+
+			if [ -f "${controlmaster}" ]; then
+				/bin/mv ${controlmaster} ${controlmaster}.$$
+				/usr/bin/sort -u ${controlmaster}.$$ > ${controlmaster}
+				/bin/rm -f ${controlmaster}.$$
+			fi
 			f_die
 			;;
 		"MANUAL")

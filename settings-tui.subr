@@ -112,7 +112,21 @@ freejname()
 # form for $pkglist
 get_construct_pkglist()
 {
-	pkglist="${ftmpdir}/tui.$$"
+	local _i
+
+	[ -z "${pkglist}" -o "${pkglist}" = "NO" ] && pkglist="${ftmpdir}/tui.$$"
+
+	# load pkg list from profile
+	if [ -n "${tpl_pkglist}" ]; then
+		if [ -r "${tpl_pkglist}" ]; then
+			/bin/cat ${tpl_pkglist} >> ${pkglist}
+		else
+			for _i in ${tpl_pkglist}; do
+				echo ${_i} >> ${pkglist}
+			done
+		fi
+	fi
+
 	pkgbrowser controlmaster="${pkglist}"
 	[ ! -s "${pkglist}" ] && pkglist="NO"
 }
@@ -1023,6 +1037,9 @@ get_construct_profile()
 	done
 
 	[ -z "${menu_list}" ] && unset jail_profile && return 0
+
+	# unset for previous template package list
+	unset tpl_pkglist
 
 	if [ -z "${1}" ]; then
 		cbsd_menubox
