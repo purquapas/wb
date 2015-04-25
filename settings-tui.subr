@@ -921,14 +921,16 @@ get_construct_vm_os_type()
 {
 	local _input
 	local defaultitem="${vm_os_type}"
-	
-	local menu_list="
-		'freebsd'	'FreeBSD-kernel based distros'		'FreeBSD, FreeNAS, pfSense, ZFSguru, kFreeBSD, ArchBSD and so on..'
-		'linux'		'Linux-kernel based distros'		'Debian, Ubuntu, RHEL, Oracle and about 1024+ names ;-) also'
-		'openbsd'	'OpenBSD-kernel based distros'		'OpenBSD-based guests'
-		'netbsd'	'NetBSD-kernel based distros'		'NetBSD-based guests'
-		'dflybsd'	'DragonFlyBSD-kernel based distros'	'DragonFlyBSD-based guests'
-		" # END-QUOTE
+
+	unset menu_list
+
+	# load menu_list from external source by emulator opportunity
+	if [ -f "${sharedir}/emulators/ostype_${emulator}.subr" ]; then
+		. ${sharedir}/emulators/ostype_${emulator}.subr
+	else
+		f_dialog_msgbox "No such menu_list for emulator ${emulator}:\n${sharedir}/emulators/ostype_${emulator}.subr"
+		return 0
+	fi
 
 	cbsd_menubox
 	retval=$?
@@ -1234,11 +1236,25 @@ EOF
 	else
 		case "${emulator}" in
 			"bhyve")
-			make_bhyve_part
-			getyesno "Do you want to create vm immediately?"
-			[ $? -eq 1 -o $? -eq 3 ] && err 0 "${MAGENTA}You can make now: ${GREEN}cbsd bcreate jconf=${TMPFILE}${NORMAL}"
-			bcreate jconf=${TMPFILE} delpkglist=${delpkglist} removejconf=${removejconf}
-			[ $? -ne 0 ] && err 0 "${MAGENTA}Config file for jconf: ${GREEN}${TMPFILE}${NORMAL}"
+				make_bhyve_part
+				getyesno "Do you want to create vm immediately?"
+				[ $? -eq 1 -o $? -eq 3 ] && err 0 "${MAGENTA}You can make now: ${GREEN}cbsd bcreate jconf=${TMPFILE}${NORMAL}"
+				bcreate jconf=${TMPFILE} delpkglist=${delpkglist} removejconf=${removejconf}
+				[ $? -ne 0 ] && err 0 "${MAGENTA}Config file for jconf: ${GREEN}${TMPFILE}${NORMAL}"
+			;;
+			"virtualbox")
+				make_virtualbox_part
+				getyesno "Do you want to create vm immediately?"
+				[ $? -eq 1 -o $? -eq 3 ] && err 0 "${MAGENTA}You can make now: ${GREEN}cbsd vcreate jconf=${TMPFILE}${NORMAL}"
+				vcreate jconf=${TMPFILE} delpkglist=${delpkglist} removejconf=${removejconf}
+				[ $? -ne 0 ] && err 0 "${MAGENTA}Config file for jconf: ${GREEN}${TMPFILE}${NORMAL}"
+			;;
+			"xen")
+				make_xen_part
+				getyesno "Do you want to create vm immediately?"
+				[ $? -eq 1 -o $? -eq 3 ] && err 0 "${MAGENTA}You can make now: ${GREEN}cbsd xcreate jconf=${TMPFILE}${NORMAL}"
+				xcreate jconf=${TMPFILE} delpkglist=${delpkglist} removejconf=${removejconf}
+				[ $? -ne 0 ] && err 0 "${MAGENTA}Config file for jconf: ${GREEN}${TMPFILE}${NORMAL}"
 			;;
 		*)
 			make_emulator_part
