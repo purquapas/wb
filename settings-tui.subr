@@ -1028,6 +1028,7 @@ get_construct_profile()
 	for i in ${_res}; do
 		unset jail_profile
 		eval $( ${GREP_CMD} ^jail_profile= ${i} )
+		eval $( ${GREP_CMD} ^long_description= ${i} )
 		[ -z "${jail_profile}" ] && continue
 		_mypath=$( echo $i | /usr/bin/sed s:^${workdir}/::g )
 		#_myprofiles="${_myprofiles} ${jail_profile} ${_mypath} on "
