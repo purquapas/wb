@@ -1062,7 +1062,9 @@ get_construct_profile()
 		# reload some dynamic variables depended from jname
 		merge_apply_profiles ${etcdir}/defaults/${zero_profile} ${global_profile_file}
 	fi
-	
+
+	[ -n "${tpl_pkglist}" ] && pkglist="${tpl_pkglist}"
+
 	return ${retval}
 }
 
