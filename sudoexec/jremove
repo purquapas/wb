@@ -59,11 +59,17 @@ for jname in ${JLIST}; do
 
 	if [ ${unregister} -eq 0 ] ; then
 		if [  ${jid} -ne 0 ]; then
-			if [ "${emulator}" = "bhyve" ]; then
-				bstop jname=${jname}
-			else
-				jstop jname=${jname}
-			fi
+			case "${emulator}" in
+				"bhyve")
+					bstop jname=${jname}
+					;;
+				"virtualbox")
+					vstop jname=${jname}
+					;;
+				*)
+					jstop jname=${jname}
+					;;
+			esac
 		fi
 		jcleanup jname=${jname}
 		umount ${path} 2>/dev/null
