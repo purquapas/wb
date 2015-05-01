@@ -1112,14 +1112,37 @@ get_construct_jdomain()
 }
 
 
-
-
 make_bhyve_part()
 {
 cat >> ${TMPFILE} << EOF
 exec_start="${exec_start}"
 exec_stop="${exec_stop}"
 emulator="bhyve";
+imgsize="${imgsize}";
+vm_cpus="${vm_cpus}";
+vm_ram="${vm_ram}";
+vm_os_type="${vm_os_type}";
+dist_site="";
+iso_site="";
+iso_img="";
+
+vm_hostbridge="${vm_hostbridge}";
+bhyve_flags="${bhyve_flags}";
+virtio_type="${virtio_type}";
+gw4="${gw4}";
+vm_os_profile="${vm_os_profile}";
+swapsize="${swapsize}"
+vm_guestfs="${vm_guestfs}"
+EOF
+}
+
+
+make_virtualbox_part()
+{
+cat >> ${TMPFILE} << EOF
+exec_start="${exec_start}"
+exec_stop="${exec_stop}"
+emulator="virtualbox";
 imgsize="${imgsize}";
 vm_cpus="${vm_cpus}";
 vm_ram="${vm_ram}";

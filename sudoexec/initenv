@@ -351,9 +351,12 @@ EOF
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/jail-arg ${sharedir}/jail-arg
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/rctl.conf ${sharedir}/rctl.conf
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/bhyve.conf ${sharedir}/bhyve.conf
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/virtualbox.conf ${sharedir}/virtualbox.conf
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/zrep.conf ${sharedir}/zrep.conf
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/bhyvedsk.conf ${sharedir}/bhyvedsk.conf
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/bhyvenic.conf ${sharedir}/bhyvenic.conf
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/virtualboxdsk.conf ${sharedir}/virtualboxdsk.conf
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/virtualboxnic.conf ${sharedir}/virtualboxnic.conf
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/vnetnic.conf ${sharedir}/vnetnic.conf
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/jrctl-arg ${sharedir}/jrctl-arg
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-carp.schema ${sharedir}/local-carp.schema
@@ -368,6 +371,9 @@ EOF
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-bhyve.schema ${sharedir}/local-bhyve.schema
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-bhyvedsk.schema ${sharedir}/local-bhyvedsk.schema
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-bhyvenic.schema ${sharedir}/local-bhyvenic.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-virtualbox.schema ${sharedir}/local-virtualbox.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-virtualboxdsk.schema ${sharedir}/local-virtualboxdsk.schema
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-virtualboxnic.schema ${sharedir}/local-virtualboxnic.schema
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-vnetnic.schema ${sharedir}/local-vnetnic.schema
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/local-unconfigured.schema ${sharedir}/local-unconfigured.schema
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/share/cbsdtaskd-taskd.schema ${sharedir}/cbsdtaskd-taskd.schema
@@ -499,6 +505,10 @@ phase5()
 	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-bhyve.schema
 	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-bhyvedsk.schema
 	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-bhyvenic.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-virtualbox.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-virtualboxdsk.schema
+	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-virtualboxnic.schema
+
 	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/inv.${nodename}.sqlite ${distdir}/share/local-vnetnic.schema
 	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/cbsdtaskd.sqlite ${distdir}/share/cbsdtaskd-taskd.schema
 	/usr/local/bin/cbsd ${miscdir}/updatesql ${dbdir}/zrepd.sqlite ${distdir}/share/zrepd.schema
