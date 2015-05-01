@@ -202,6 +202,7 @@ delete_full()
 # load defaults
 readconf jail-freebsd-default.conf
 . ${JAILRCCONF}
+
 [ -z "${dbfile}" ] && dbfile="${dbdir}/local.sqlite"
 [ ! -f "${dbfile}" ] && err 1 "${MAGENTA}inventorydb not found. You must create them first via misc/updatesql: ${GREEN}${dbfile}${NORMAL}"
 

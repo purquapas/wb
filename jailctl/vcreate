@@ -129,7 +129,7 @@ fi
 [ -n "${fstablocal}" -a -f "${fstablocal}" ] && /bin/cp ${fstablocal} ${jailfstabdir}/${jailfstabpref}${jname}.local
 
 # Finnaly export to SQLite
-vregister jname=${jname} mode=new
+jregister jname=${jname} mode=new
 
 _res=$?
 
