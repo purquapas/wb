@@ -206,6 +206,9 @@ if [ ${_res} -eq 0 ]; then
 	storeconf virtualbox-${vm_os_type}-${vm_os_profile}.conf ${jailsysdir}/${jname}/etc/virtualbox-${vm_os_type}-${vm_os_profile}.conf
 
 	${VBOX_MGMT_CMD} createvm --name ${jname} --ostype ${virtualbox_ostype} --register
+
+	${VBOX_MGMT_CMD} storagectl ${jname} --name "IDE Controller" --add ide
+	${VBOX_MGMT_CMD} storageattach ${jname} --storagectl "IDE Controller" --port 0 --device 0 --type hdd --medium ${data}/${defdsk}
 	exit 0
 else
 	${ECHO}
