@@ -64,6 +64,7 @@ for jname in ${JLIST}; do
 					bstop jname=${jname}
 					;;
 				"virtualbox")
+					. ${workdir}/virtualbox.subr
 					vstop jname=${jname}
 					;;
 				*)
@@ -78,13 +79,18 @@ for jname in ${JLIST}; do
 	fi
 
 	[ -d "${DST}" ] && removedata ${DST} force
-	[ -f "${JAILFSTAB}" ] && rm -f ${JAILFSTAB}
-	[ -f "${JAILFSTAB}.local" ] && rm -f "${JAILFSTAB}.local"
-	[ -f "${JAILRCCONF}" ] && rm -f ${JAILRCCONF}
-	[ -f "${jailrcconfdir}/rc.conf_${jname}" ] && rm -f "${jailrcconfdir}/rc.conf_${jname}"
-	[ -d "${jailsysdir}/${jname}" ] && rm -rf "${jailsysdir}/${jname}"
-	[ -f "${logdir}/${jname}.log" ] && rm -f "${logdir}/${jname}.log"
-	[ -d "${jaildir}/${jname}" ] && rmdir "${jaildir}/${jname}"
+	[ -f "${JAILFSTAB}" ] && /bin/rm -f ${JAILFSTAB}
+	[ -f "${JAILFSTAB}.local" ] && /bin/rm -f "${JAILFSTAB}.local"
+	[ -f "${JAILRCCONF}" ] && /bin/rm -f ${JAILRCCONF}
+	[ -f "${jailrcconfdir}/rc.conf_${jname}" ] && /bin/rm -f "${jailrcconfdir}/rc.conf_${jname}"
+	[ -d "${jailsysdir}/${jname}" ] && /bin/rm -rf "${jailsysdir}/${jname}"
+	[ -f "${logdir}/${jname}.log" ] && /bin/rm -f "${logdir}/${jname}.log"
+	[ -d "${jaildir}/${jname}" ] && /bin/rmdir "${jaildir}/${jname}"
+	
+	if [ "${emulator}" = "virtualbox" ]; then
+		${VBOX_MGMT_CMD} unregistervm ${jname} --delete
+		VBoxManage unregistervm ${jname} --delete
+	fi
 done
 
 exit 0

@@ -7,6 +7,9 @@ _CBSD_VIRTUALBOX_SUBR=1
 # strings.subr
 #
 
+VBOX_CMD="/usr/local/bin/VirtualBox"
+VBOX_MGMT_CMD="/usr/local/bin/VBoxManage"
+
 
 # test environment for virtualboxing
 # init tmuxcmd
@@ -14,7 +17,7 @@ init_virtualbox()
 {
 	local _required_kmods="vboxdrv vboxnetadp if_tap if_bridge" _i _res
 
-	[ $? -ne 0 ] && err 1 "${MAGENTA}Your CPU does not appear to support ${GREEN}EPT${NORMAL}"
+	[ ! -x ${VBOX_CMD} ] && err 1 "${MAGENTA}No such ${VBOX_CMD}. Please install it: ${GREEN}pkg install virtualbox-ose${NORMAL}"
 
 	for _i in ${_required_kmods}; do
 		if ! /sbin/kldstat -qm ${_i} >/dev/null 2>&1; then
