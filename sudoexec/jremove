@@ -86,10 +86,11 @@ for jname in ${JLIST}; do
 	[ -d "${jailsysdir}/${jname}" ] && /bin/rm -rf "${jailsysdir}/${jname}"
 	[ -f "${logdir}/${jname}.log" ] && /bin/rm -f "${logdir}/${jname}.log"
 	[ -d "${jaildir}/${jname}" ] && /bin/rmdir "${jaildir}/${jname}"
-	
+
 	if [ "${emulator}" = "virtualbox" ]; then
-		${VBOX_MGMT_CMD} unregistervm ${jname} --delete
-		VBoxManage unregistervm ${jname} --delete
+		. ${workdir}/virtualbox.subr
+		${VBOX_MGMT_CMD} unregistervm ${jname}
+		[ -d "/root/VirtualBox VMs/${jname}" ] && /bin/rm -rf "/root/VirtualBox VMs/${jname}"
 	fi
 done
 
