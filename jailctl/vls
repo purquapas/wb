@@ -9,12 +9,12 @@ shownode=1 - show nodename for jails\n\
 node= only for current node\n\
 header=0 don't print header\n\
 display= list by comma for column. Default: jname,vm_ram,vm_cpus,vm_os_type,path,status\n"
-EXTHELP="wf_bls.html"
+EXTHELP="wf_vls.html"
 
 . ${subr}
 . ${strings}
 
-readconf bls.conf
+readconf vls.conf
 init $*
 
 [ -z "${display}" ] && display="jname,vm_ram,vm_cpus,vm_os_type,path,status"

@@ -23,7 +23,7 @@ init_rcconf()
 		unset ${i}
 	done
 
-	_ALLJCOL=$( echo ${_JCOL}|tr " " "," )
+	_ALLJCOL=$( echo ${_JCOL}|/usr/bin/tr " " "," )
 
 	# empty string on remote node if cbsd version is mistmatch ( diff. jail schema )
 	_A=$( 2>/dev/null env sqldelimer="|" ${miscdir}/sqlcli ${_sqlfile} "SELECT ${_ALLJCOL} FROM jails WHERE jname=\"$1\"" )
@@ -33,14 +33,16 @@ init_rcconf()
 	. ${strings}
 	sqllist "${_A}" ${_JCOL}
 
-	if [ "${emulator}" = "bhyve" ]; then
-		. ${sharedir}/bhyve.conf
+	case "${emulator}" in
+		"bhyve"|"virtualbox")
+		. ${sharedir}/${emulator}.conf
 		_BCOL="${MYCOL}"
 		jid=-1
-		_ALLBCOL=$(echo ${_BCOL}|tr " " ",")
-		_A=$( 2>/dev/null env sqldelimer="|" ${miscdir}/sqlcli ${_sqlfile} "SELECT ${_ALLBCOL} FROM bhyve WHERE jname=\"$1\"" )
+		_ALLBCOL=$( echo ${_BCOL}|/usr/bin/tr " " "," )
+		_A=$( 2>/dev/null env sqldelimer="|" ${miscdir}/sqlcli ${_sqlfile} "SELECT ${_ALLBCOL} FROM ${emulator} WHERE jname=\"$1\"" )
 		sqllist "${_A}" ${_BCOL}
-	fi
+		;;
+	esac
 
 	init_jail_path
 
@@ -84,35 +86,6 @@ init_rcconf()
 	[ "${exec_poststop}" = "0" ] && unset ${exec_poststop}
 	[ "${exec_prestart}" = "0" ] && unset ${exec_prestart}
 	[ "${exec_prestop}" = "0" ] && unset ${exec_prestop}
-}
-
-
-
-init_bhyveconf()
-{
-	local _JCOL _BCOL _A _ALLJCOL _ALLBCOL jname _sqlfile _datafile="local" i
-
-	[ -n "${2}" ] && _datafile="${2}"
-	_sqlfile="${dbdir}/${_datafile}.sqlite"
-
-	[ ! -f "${_sqlfile}" ] && return 0
-
-	. ${sharedir}/bhyve.conf
-	_JCOL="${MYCOL}"
-
-	#clean sqlite3 schema variables
-	for i in ${_JCOL}; do
-		unset ${i}
-	done
-
-	_ALLJCOL=$(echo ${_JCOL}|tr " " ",")
-
-	# empty string on remote node if cbsd version is mistmatch ( diff. jail schema )
-	_A=$( 2>/dev/null env sqldelimer="|" ${miscdir}/sqlcli ${_sqlfile} "SELECT ${_ALLJCOL} FROM bhyve WHERE jname=\"$1\"" )
-
-	[ -z "${_A}" ] && return 1
-
-	sqllist "${_A}" ${_JCOL}
 }
 
 init_rcconf $jname $sqlfile

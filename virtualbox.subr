@@ -7,6 +7,8 @@ _CBSD_VIRTUALBOX_SUBR=1
 # strings.subr
 #
 
+. ${workdir}/virtual.subr
+
 VBOX_CMD="/usr/local/bin/VirtualBox"
 VBOX_MGMT_CMD="/usr/local/bin/VBoxManage"
 

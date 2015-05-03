@@ -6,7 +6,7 @@ _CBSD_BHYVE_SUBR=1
 # required:
 # strings.subr
 #
-
+. ${workdir}/virtual.subr
 
 # test environment for bhyveing
 # init tmuxcmd

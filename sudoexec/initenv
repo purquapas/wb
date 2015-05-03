@@ -315,6 +315,7 @@ EOF
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/FreeBSD.subr ${workdir}/FreeBSD.subr
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/DragonFly.subr ${workdir}/DragonFly.subr
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/bhyve.subr ${workdir}/bhyve.subr
+	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/virtual.subr ${workdir}/virtual.subr
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/virtualbox.subr ${workdir}/virtualbox.subr
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/zrep.subr ${workdir}/zrep.subr
 	installne "-o ${cbsduser} -g ${cbsduser} -m 444" ${distdir}/nc.subr ${workdir}/nc.subr
