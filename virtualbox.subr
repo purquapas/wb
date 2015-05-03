@@ -11,7 +11,7 @@ _CBSD_VIRTUALBOX_SUBR=1
 
 VBOX_CMD="/usr/local/bin/VirtualBox"
 VBOX_MGMT_CMD="/usr/local/bin/VBoxManage"
-
+VBOX_HEADLESS_CMD="/usr/local/bin/VBoxHeadless"
 
 # test environment for virtualboxing
 # init tmuxcmd
