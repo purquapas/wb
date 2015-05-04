@@ -67,7 +67,7 @@ if [ -n "${jname}" ]; then
 		prepare_jail
 	fi
 
-	if [ "${emulator}" != "0" -a -n "${emulator}" -a "${emulator}" != "bhyve" ]; then
+	if [ "${emulator}" != "jail" -a -n "${emulator}" -a "${emulator}" != "bhyve" ]; then
 		. ${workdir}/emulator.subr
 		init_usermode_emul
 		CHROOT_EXEC="/usr/sbin/chroot ${path} /bin/${emulator}"

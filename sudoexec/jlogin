@@ -108,7 +108,7 @@ case "${ver}" in
 		fi
 		;;
 	*)
-		if [ "${emulator}" != "0" -a -n "${emulator}" ]; then
+		if [ "${emulator}" != "jail" -a -n "${emulator}" ]; then
 			. ${workdir}/emulator.subr
 			init_usermode_emul
 			LOGIN_STR="/bin/${emulator} /usr/bin/login -f root"

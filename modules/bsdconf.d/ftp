@@ -38,7 +38,7 @@ else
 	[ $jid -eq 0 ] && err 1 "${MAGENTA}Jail is not active: ${GREEN}${jname}${NORMAL}"
 
 
-	if [ "${emulator}" != "0" -a -n "${emulator}" -a "${emulator}" != "bhyve" ]; then
+	if [ "${emulator}" != "jail" -a -n "${emulator}" -a "${emulator}" != "bhyve" ]; then
 		. ${workdir}/emulator.subr
 		init_usermode_emul
 		exec_cmd="/usr/sbin/jexec ${jid} /bin/${emulator}"
