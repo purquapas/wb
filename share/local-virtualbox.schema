@@ -24,6 +24,8 @@ vm_os_profile="text default 0"
 # tmux or nmdm
 vm_console="text default \"tmux\""
 
+vm_vnc_port="integer default 3390"
+
 CONSTRAINT=", FOREIGN KEY(jname) REFERENCES jails(jname)"
 
 INITDB=""
