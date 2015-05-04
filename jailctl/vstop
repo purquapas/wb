@@ -47,3 +47,4 @@ fi
 
 
 ${VBOX_MGMT_CMD} controlvm ${jname} acpipowerbutton
+[ $? -ne 0 ] && ${VBOX_MGMT_CMD} controlvm ${jname} poweroff
