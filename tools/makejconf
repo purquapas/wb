@@ -242,7 +242,7 @@ fi
 
 #  kernel version spoofing support on FreeBSD 10.2+
 #  https://svnweb.freebsd.org/base?view=revision&revision=r279361
-if [ $freebsdhostversion -gt 1000500 ]; then
+if [ $freebsdhostversion -gt 1001510 ]; then
 	readconf buildworld.conf
 	. ${workdir}/universe.subr
 
