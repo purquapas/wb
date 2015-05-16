@@ -152,6 +152,7 @@ emulator_exec_check()
 	[ -z "${emulator}" ] && return 0
 	[ "${emulator}" = "bhyve" ] && return 0
 	[ "${emulator}" = "jail" ] && return 0
+	[ "${emulator}" = "0" ] && return 0
 	_res=$( /usr/sbin/chroot ${path} /bin/${emulator} ${path}/bin/sh -n "echo ping" 2>&1 )
 	[ $? -ne 0 ] && printf "${_res}"
 }
@@ -231,17 +232,17 @@ unset_changes_20140930()
 
 	if ${GREP_CMD} "${_tpl}" ${data}/etc/make.conf >/dev/null 2>&1; then
 		/bin/cp -a ${data}/etc/make.conf ${data}/etc/make.conf.bak
-		${GREP_CMD} -v "${_tpl}" ${data}/etc/make.conf.bak | {GREP_CMD} "." > ${data}/etc/make.conf
+		${GREP_CMD} -v "${_tpl}" ${data}/etc/make.conf.bak | ${GREP_CMD} "." > ${data}/etc/make.conf
 	fi
 
 	if ${GREP_CMD} "${_tpl}" ${data}/etc/profile >/dev/null 2>&1; then
 		/bin/cp -a ${data}/etc/profile ${data}/etc/profile.bak
-		${GREP_CMD} -v "${_tpl}" ${data}/etc/profile.bak | {GREP_CMD} "." > ${data}/etc/profile
+		${GREP_CMD} -v "${_tpl}" ${data}/etc/profile.bak | ${GREP_CMD} "." > ${data}/etc/profile
 	fi
 
 	if ${GREP_CMD} "${_tpl}" ${data}/etc/csh.cshrc >/dev/null 2>&1; then
 		/bin/cp -a ${data}/etc/csh.cshrc ${data}/etc/csh.cshrc.bak
-		${GREP_CMD} -v "${_tpl}" ${data}/etc/csh.cshrc.bak | {GREP_CMD} "." > ${data}/etc/csh.cshrc
+		${GREP_CMD} -v "${_tpl}" ${data}/etc/csh.cshrc.bak | ${GREP_CMD} "." > ${data}/etc/csh.cshrc
 	fi
 }
 
