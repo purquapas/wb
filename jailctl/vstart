@@ -57,6 +57,8 @@ vm_ram=$(( vm_ram / 1024 / 1024 ))
 echo [debug] ${VBOX_MGMT_CMD} modifyvm ${jname} --memory ${vm_ram} --cpus ${vm_cpus} --floppy disabled --audio none --nic1 bridged --bridgeadapter1 re0 --vram 16 --accelerate3d off --boot1 disk --acpi on --cableconnected1 on --usb off ${vnc_args}
 ${VBOX_MGMT_CMD} modifyvm ${jname} --memory ${vm_ram} --cpus ${vm_cpus} --floppy disabled --audio none --nic1 bridged --bridgeadapter1 re0 --vram 16 --accelerate3d off --boot1 disk --acpi on --cableconnected1 on --usb off ${vnc_args}
 
+${VBOX_MGMT_CMD} modifyvm ${jname} --nictype1 virtio
+
 readconf bhyve-${vm_os_type}-${vm_os_profile}.conf
 [ -z "${bhyve_profile}" ] && err 1 "${MAGENTA}No such profile: ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
 # re-read jail params and apply personal after profile
