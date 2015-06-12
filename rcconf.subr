@@ -41,17 +41,15 @@ init_rcconf()
 	. ${strings}
 	sqllist "${_A}" ${_JCOL}
 
-
-
 	case "${emulator}" in
 		"bhyve"|"virtualbox")
-		. ${sharedir}/${emulator}.conf
-		_BCOL="${MYCOL}"
-		jid=-1
-		_ALLBCOL=$( echo ${_BCOL}|/usr/bin/tr " " "," )
-		_A=$( 2>/dev/null env sqldelimer="|" ${miscdir}/sqlcli ${_sqlfile} "SELECT ${_ALLBCOL} FROM ${emulator} WHERE jname=\"$1\"" )
-		sqllist "${_A}" ${_BCOL}
-		;;
+			. ${sharedir}/${emulator}.conf
+			_BCOL="${MYCOL}"
+			jid=-1
+			_ALLBCOL=$( echo ${_BCOL}|/usr/bin/tr " " "," )
+			_A=$( 2>/dev/null env sqldelimer="|" ${miscdir}/sqlcli ${_sqlfile} "SELECT ${_ALLBCOL} FROM ${emulator} WHERE jname=\"$1\"" )
+			sqllist "${_A}" ${_BCOL}
+			;;
 	esac
 
 	init_jail_path
