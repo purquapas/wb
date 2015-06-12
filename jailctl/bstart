@@ -49,18 +49,16 @@ boot_from_grub()
 	check_for_empty_hdd
 	init_iso
 
-	[ "${vm_iso_path}" != "0" ] && iso_img="${vm_iso_path}"
-	if [ "${vm_boot}" = "cd" ]; then
-		init_iso
-		if [ $? -eq 1 ]; then
-			printf "${MAGENTA}Continue without ${iso_img}. Hope this is ok, sleep for 5 seconds ${NORMAL}"
-			for i in $( jot 5 ); do
-				printf "."
-				sleep 1
-			done
-			echo
-		fi
+	if [ $? -eq 1 -a "${vm_boot}" = "cd" ]; then
+		printf "${MAGENTA}Continue without ${iso_img}. Hope this is ok, sleep for 5 seconds ${NORMAL}"
+		for i in $( jot 5 ); do
+			printf "."
+			sleep 1
+		done
+		echo
 	fi
+
+	[ "${vm_iso_path}" != "0" ] && iso_img="${vm_iso_path}"
 
 	${ECHO} "${MAGENTA}Creating ${GREEN}device.map ${MAGENTA}in ${GREEN}${_devicemap}${NORMAL}"
 	truncate -s0 ${_devicemap}

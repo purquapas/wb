@@ -39,6 +39,7 @@ case "${vm_vnc_port}" in
 	0)
 		vm_port=$( get_next_rd_port )
 		vnc_args="--vrde on --vrdeport ${vm_port}"
+		${ECHO} "${MAGENTA}VRDP is enabled. VNC port: ${GREEN}${vm_port}${NORMAL}"
 		;;
 	1)
 		vm_port=0
@@ -53,7 +54,7 @@ esac
 cbsdsql local UPDATE virtualbox SET vm_rd_port=\"${vm_port}\" WHERE jname=\"${jname}\"
 
 vm_ram=$(( vm_ram / 1024 / 1024 ))
-echo ${VBOX_MGMT_CMD} modifyvm ${jname} --memory ${vm_ram} --cpus ${vm_cpus} --floppy disabled --audio none --nic1 bridged --bridgeadapter1 re0 --vram 16 --accelerate3d off --boot1 disk --acpi on --cableconnected1 on --usb off ${vnc_args}
+echo [debug] ${VBOX_MGMT_CMD} modifyvm ${jname} --memory ${vm_ram} --cpus ${vm_cpus} --floppy disabled --audio none --nic1 bridged --bridgeadapter1 re0 --vram 16 --accelerate3d off --boot1 disk --acpi on --cableconnected1 on --usb off ${vnc_args}
 ${VBOX_MGMT_CMD} modifyvm ${jname} --memory ${vm_ram} --cpus ${vm_cpus} --floppy disabled --audio none --nic1 bridged --bridgeadapter1 re0 --vram 16 --accelerate3d off --boot1 disk --acpi on --cableconnected1 on --usb off ${vnc_args}
 
 readconf bhyve-${vm_os_type}-${vm_os_profile}.conf
@@ -63,20 +64,16 @@ readconf bhyve-${vm_os_type}-${vm_os_profile}.conf
 
 check_for_empty_hdd
 init_iso
+if [ $? -eq 1 -a "${vm_boot}" = "cd" ]; then
+	printf "${MAGENTA}Continue without ${iso_img}. Hope this is ok, sleep for 5 seconds ${NORMAL}"
+	for i in $( jot 5 ); do
+		printf "."
+		sleep 1
+	done
+	echo
+fi
 
 [ "${vm_iso_path}" != "0" ] && iso_img="${vm_iso_path}"
-
-if [ "${vm_boot}" = "cd" ]; then
-	init_iso
-	if [ $? -eq 1 ]; then
-		printf "${MAGENTA}Continue without ${iso_img}. Hope this is ok, sleep for 5 seconds ${NORMAL}"
-		for i in $( jot 5 ); do
-			printf "."
-			sleep 1
-		done
-		echo
-	fi
-fi
 
 if [ -r "${iso_img}" ]; then
 	${ECHO} "${MAGENTA}Attaching as DVD-DRIVE: ${GREEN}${iso_img}${NORMAL}"
