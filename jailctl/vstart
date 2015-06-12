@@ -53,8 +53,8 @@ esac
 cbsdsql local UPDATE virtualbox SET vm_rd_port=\"${vm_port}\" WHERE jname=\"${jname}\"
 
 vm_ram=$(( vm_ram / 1024 / 1024 ))
-echo ${VBOX_MGMT_CMD} modifyvm ${jname} --memory ${vm_ram} --cpus ${vm_cpus} --floppy disabled --audio none --nic1 bridged --bridgeadapter1 re0 --vram 4 --accelerate3d off --boot1 disk --acpi on --cableconnected1 on --usb off ${vnc_args}
-${VBOX_MGMT_CMD} modifyvm ${jname} --memory ${vm_ram} --cpus ${vm_cpus} --floppy disabled --audio none --nic1 bridged --bridgeadapter1 re0 --vram 4 --accelerate3d off --boot1 disk --acpi on --cableconnected1 on --usb off ${vnc_args}
+echo ${VBOX_MGMT_CMD} modifyvm ${jname} --memory ${vm_ram} --cpus ${vm_cpus} --floppy disabled --audio none --nic1 bridged --bridgeadapter1 re0 --vram 16 --accelerate3d off --boot1 disk --acpi on --cableconnected1 on --usb off ${vnc_args}
+${VBOX_MGMT_CMD} modifyvm ${jname} --memory ${vm_ram} --cpus ${vm_cpus} --floppy disabled --audio none --nic1 bridged --bridgeadapter1 re0 --vram 16 --accelerate3d off --boot1 disk --acpi on --cableconnected1 on --usb off ${vnc_args}
 
 readconf bhyve-${vm_os_type}-${vm_os_profile}.conf
 [ -z "${bhyve_profile}" ] && err 1 "${MAGENTA}No such profile: ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
@@ -62,8 +62,10 @@ readconf bhyve-${vm_os_type}-${vm_os_profile}.conf
 . ${jrcconf}
 
 check_for_empty_hdd
+init_iso
 
 [ "${vm_iso_path}" != "0" ] && iso_img="${vm_iso_path}"
+
 if [ "${vm_boot}" = "cd" ]; then
 	init_iso
 	if [ $? -eq 1 ]; then
@@ -76,14 +78,25 @@ if [ "${vm_boot}" = "cd" ]; then
 	fi
 fi
 
-[ "${iso_img}" ] && ${VBOX_MGMT_CMD} storageattach ${jname} --storagectl "IDE Controller" --port 1 --device 0 --type dvddrive --medium ${iso_img}
+if [ -r "${iso_img}" ]; then
+	${ECHO} "${MAGENTA}Attaching as DVD-DRIVE: ${GREEN}${iso_img}${NORMAL}"
+	${VBOX_MGMT_CMD} storageattach ${jname} --storagectl "IDE Controller" --port 1 --device 0 --type dvddrive --medium ${iso_img}
+fi
+
+${ECHO} "${MAGENTA}Boot from: ${GREEN}${vm_boot}${NORMAL}"
 
 case "${vm_boot}" in
 	"hdd")
-		${VBOX_MGMT_CMD} modifyvm ${jname} --boot1 dvd
+		${VBOX_MGMT_CMD} modifyvm ${jname} --boot1 disk
+		${VBOX_MGMT_CMD} modifyvm ${jname} --boot2 dvd
+		${VBOX_MGMT_CMD} modifyvm ${jname} --boot3 none # net
+		${VBOX_MGMT_CMD} modifyvm ${jname} --boot4 none # floppy
 		;;
 	"cd")
-		${VBOX_MGMT_CMD} modifyvm ${jname} --boot1 disk
+		${VBOX_MGMT_CMD} modifyvm ${jname} --boot1 dvd
+		${VBOX_MGMT_CMD} modifyvm ${jname} --boot2 disk
+		${VBOX_MGMT_CMD} modifyvm ${jname} --boot3 none # net
+		${VBOX_MGMT_CMD} modifyvm ${jname} --boot4 none # floppy
 		;;
 esac
 

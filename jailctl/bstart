@@ -47,6 +47,7 @@ boot_from_grub()
 	. ${jrcconf}
 
 	check_for_empty_hdd
+	init_iso
 
 	[ "${vm_iso_path}" != "0" ] && iso_img="${vm_iso_path}"
 	if [ "${vm_boot}" = "cd" ]; then

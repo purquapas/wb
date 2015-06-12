@@ -16,6 +16,9 @@ init_iso()
 
 	[ -z "${iso_img_dist}" ] && iso_img_dist="${iso_img}"
 
+	# Unessesary when we boot not from cd
+	[ "${vm_boot}" != "cd" ] && iso_img="${_myfile}" && return 0
+
 	if [ ! -f "${_myfile}" -a ! -f "${_mydir}/${iso_img_dist}" -a "${fetch}" = "1" ]; then
 		[ -z "${iso_site}" ] && ${ECHO} "${MAGENTA}No such iso: ${GREEN}${_myfile}${MAGENTA} and ${GREEN}iso_site${MAGENTA} variable not found" && return 1
 		${ECHO} "${MAGENTA}No such iso: ${GREEN}${_myfile}${MAGENTA} in ${GREEN}${_mydir}${NORMAL}"
@@ -71,24 +74,12 @@ check_for_empty_hdd()
 # $1 - start port
 get_next_rd_port()
 {
-	local _i _start=3390 _rd_port=0 _tmp_port=0
-	local _x _used
+	local _start=3390
 
 	[ -n "${1}" ] && _start="$1"
 
-#	_tmp_port=$( cbsdsql local SELECT vm_rd_port FROM ${emulator} WHERE jname IN \( SELECT jname FROM jails WHERE status!='1' \); )
-	_tmp_port=$( cbsdsql local SELECT vm_rd_port FROM ${emulator} )
-
-	for _i in $( /usr/bin/seq ${_start} 5000 ); do
-		_used=0
-		for _x in ${_tmp_port}; do
-			[ "${_x}" = "${_i}" ] && _used=1 && break
-		done
-		
-		if [ ${_used} -eq 0 ]; then
-			_rd_port=${_i}
-			break
-		fi
+	for _rd_port in $( /usr/bin/seq ${_start} 5000 ); do
+		/usr/bin/nc -w 2 -z 127.0.0.01 ${_i} > /dev/null 2>&1 || break
 	done
 	echo ${_rd_port}
 }
