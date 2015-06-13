@@ -279,9 +279,9 @@ if [ $# -gt 1 -a -z "${jname}" ]; then
 	JLIST=$*
 	for jname in ${JLIST}; do
 		[ "${jname}" = "inter=0" ] && continue
-		TRAP="${TRAP} rm -f ${ftmpdir}/jstart.${jname}.$$;"
+		TRAP="${TRAP} /bin/rm -f ${ftmpdir}/bstart.${jname}.$$;"
 		trap "${TRAP}" HUP INT ABRT BUS TERM EXIT
-		/usr/sbin/daemon -p ${ftmpdir}/jstart.${jname}.$$ /usr/local/bin/cbsd bstart inter=${inter} jname=${jname}
+		/usr/sbin/daemon -p ${ftmpdir}/bstart.${jname}.$$ /usr/local/bin/cbsd bstart inter=${inter} jname=${jname}
 		#lets save .pid file
 		sleep 1
 		[ -f "${ftmpdir}/bstart.${jname}.$$" ] && cbsd_pwait --pid=$( /bin/cat ${ftmpdir}/bstart.${jname}.$$ ) --timeout=${parallel}
@@ -292,7 +292,7 @@ if [ $# -gt 1 -a -z "${jname}" ]; then
 	done
 
 	wait_for_fpid start ${parallel}
-	err 0 "${MAGENTA}Multiple jstart: ${GREEN}done${NORMAL}"
+	err 0 "${MAGENTA}Multiple bstart: ${GREEN}done${NORMAL}"
 fi
 
 

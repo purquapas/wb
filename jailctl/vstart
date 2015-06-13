@@ -23,6 +23,33 @@ init $*
 
 . ${workdir}/fetch.subr
 
+# MAIN for multiple jails
+TRAP=""
+
+if [ $# -gt 1 -a -z "${jname}" ]; then
+	# multiple astart always non interactive
+	export inter=0
+	# recursive
+	JLIST=$*
+	for jname in ${JLIST}; do
+		[ "${jname}" = "inter=0" ] && continue
+		TRAP="${TRAP} /bin/rm -f ${ftmpdir}/vstart.${jname}.$$;"
+		trap "${TRAP}" HUP INT ABRT BUS TERM EXIT
+		/usr/sbin/daemon -p ${ftmpdir}/vstart.${jname}.$$ /usr/local/bin/cbsd vstart inter=${inter} jname=${jname}
+		#lets save .pid file
+		sleep 1
+		[ -f "${ftmpdir}/vstart.${jname}.$$" ] && cbsd_pwait --pid=$( /bin/cat ${ftmpdir}/vstart.${jname}.$$ ) --timeout=${parallel}
+		trap "" HUP INT ABRT BUS TERM EXIT
+		# Artificial delay to create a sequence (for order compliance)
+		# todo: determine VM complete starting
+		sleep 12
+	done
+
+	wait_for_fpid start ${parallel}
+	err 0 "${MAGENTA}Multiple vstart: ${GREEN}done${NORMAL}"
+fi
+
+
 # MAIN
 init_virtualbox
 
