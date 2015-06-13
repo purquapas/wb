@@ -158,8 +158,13 @@ if [ "${vm_os_type}" = "freebsd" -a "${from_jail}" = "1" ]; then
 fi
 
 if [ ${_res} -eq 0 ]; then
-	${ECHO}
-	${ECHO} "${MAGENTA}To edit VM properties use: ${GREEN}cbsd bconfig jname=${jname}${NORMAL}"
+	echo
+	${ECHO} "${MAGENTA}To edit VM properties use: ${GREEN}cbsd vconfig jname=${jname}${NORMAL}"
+	${ECHO} "${MAGENTA}To start VM use: ${GREEN}cbsd vstart ${jname}${NORMAL}"
+	${ECHO} "${MAGENTA}To stop VM use: ${GREEN}cbsd vstop jname=${jname}${NORMAL}"
+	${ECHO} "${MAGENTA}To remove VM use: ${GREEN}cbsd vremove jname=${jname}${NORMAL}"
+	${ECHO} "${MAGENTA}For attach VM console use: ${GREEN}cbsd vlogin jname=${jname}${NORMAL}"
+	echo
 	${ECHO} "${MAGENTA}Creating ${jname} complete: ${GREEN}Enjoy!${NORMAL}"
 	/bin/rm -f $rcconf
 
