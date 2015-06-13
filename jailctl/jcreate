@@ -171,9 +171,9 @@ if [ ${res} -eq 0 ]; then
 	echo
 	${ECHO} "${MAGENTA}To edit VM properties use: ${GREEN}cbsd jconfig jname=${jname}${NORMAL}"
 	${ECHO} "${MAGENTA}To start VM use: ${GREEN}cbsd jstart ${jname}${NORMAL}"
-	${ECHO} "${MAGENTA}To stop VM use: ${GREEN}cbsd jstop jname=${jname}${NORMAL}"
-	${ECHO} "${MAGENTA}To remove VM use: ${GREEN}cbsd jremove jname=${jname}${NORMAL}"
-	${ECHO} "${MAGENTA}For attach VM console use: ${GREEN}cbsd jlogin jname=${jname}${NORMAL}"
+	${ECHO} "${MAGENTA}To stop VM use: ${GREEN}cbsd jstop ${jname}${NORMAL}"
+	${ECHO} "${MAGENTA}To remove VM use: ${GREEN}cbsd jremove ${jname}${NORMAL}"
+	${ECHO} "${MAGENTA}For attach VM console use: ${GREEN}cbsd jlogin ${jname}${NORMAL}"
 	echo
 	${ECHO} "${MAGENTA}Creating ${jname} complete: ${GREEN}Enjoy!${NORMAL}"
 

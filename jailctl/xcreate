@@ -161,9 +161,9 @@ if [ ${_res} -eq 0 ]; then
 	echo
 	${ECHO} "${MAGENTA}To edit VM properties use: ${GREEN}cbsd xconfig jname=${jname}${NORMAL}"
 	${ECHO} "${MAGENTA}To start VM use: ${GREEN}cbsd xstart ${jname}${NORMAL}"
-	${ECHO} "${MAGENTA}To stop VM use: ${GREEN}cbsd xstop jname=${jname}${NORMAL}"
-	${ECHO} "${MAGENTA}To remove VM use: ${GREEN}cbsd xremove jname=${jname}${NORMAL}"
-	${ECHO} "${MAGENTA}For attach VM console use: ${GREEN}cbsd xlogin jname=${jname}${NORMAL}"
+	${ECHO} "${MAGENTA}To stop VM use: ${GREEN}cbsd xstop ${jname}${NORMAL}"
+	${ECHO} "${MAGENTA}To remove VM use: ${GREEN}cbsd xremove ${jname}${NORMAL}"
+	${ECHO} "${MAGENTA}For attach VM console use: ${GREEN}cbsd xlogin ${jname}${NORMAL}"
 	echo
 	${ECHO} "${MAGENTA}Creating ${jname} complete: ${GREEN}Enjoy!${NORMAL}"
 	/bin/rm -f $rcconf
