@@ -1,6 +1,5 @@
 OLD_FILES="\
 system/csup
-etc/defaults/bhyve-default-default.conf
 etc/defaults/bhyve-dflybsd-x86-4.0.1.conf
 etc/defaults/bhyve-freebsd-ArchBSD-i386-20140527.conf
 etc/defaults/bhyve-freebsd-ArchBSD-x86_64-20140904.conf
