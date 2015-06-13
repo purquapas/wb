@@ -966,7 +966,7 @@ get_construct_vm_os_type()
 # if $1 not empty just load profile without dialogizing
 get_construct_vm_os_profile()
 {
-	local _input _search_profile="bhyve-${vm_os_type}" _res bhyve_profile _myprofiles="" _myfile _all _num _myfile
+	local _input _search_profile="vm-${vm_os_type}" _res vm_profile _myprofiles="" _myfile _all _num _myfile
 	local menu_list=
 
 	local title=" profile "
@@ -977,21 +977,21 @@ get_construct_vm_os_profile()
 	_all=0
 
 	for i in ${_res}; do
-		unset bhyve_profile
-		eval $( ${GREP_CMD} ^bhyve_profile= ${i} )
+		unset vm_profile
+		eval $( ${GREP_CMD} ^vm_profile= ${i} )
 		eval $( ${GREP_CMD} ^active= ${i} )
 
-		[ -z "${bhyve_profile}" -o ${active} -eq 0 ] && continue
+		[ -z "${vm_profile}" -o ${active} -eq 0 ] && continue
 
 		unset long_description
 		eval $( ${GREP_CMD} ^long_description= ${i} )
 
-		[ -z "${long_description}" ] && long_description="${bhyve_profile}"
+		[ -z "${long_description}" ] && long_description="${vm_profile}"
 
 		_mypath=$( echo $i | /usr/bin/sed s:^${workdir}/::g )
-		menu_list="${menu_list} '${bhyve_profile}' '${_mypath}' '${long_description}'"
+		menu_list="${menu_list} '${vm_profile}' '${_mypath}' '${long_description}'"
 		# store filename
-		local profile${_all}="${bhyve_profile}"
+		local profile${_all}="${vm_profile}"
 		local file${_all}="${i}"
 		_all=$(( _all + 1 ))
 	done
@@ -1016,7 +1016,7 @@ get_construct_vm_os_profile()
 
 			if [ -f "${_myfile}" ]; then
 				unset from_jail
-				unset bhyve_profile
+				unset vm_profile
 				. ${_myfile}
 				global_profile_file="${_myfile}"
 			fi
@@ -1175,6 +1175,11 @@ swapsize="${swapsize}"
 vm_guestfs="${vm_guestfs}"
 vm_vnc_port="${vm_vnc_port}"
 EOF
+}
+
+make_xen_part()
+{
+	make_virtualbox_part
 }
 
 

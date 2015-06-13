@@ -41,8 +41,8 @@ boot_from_grub()
 {
 	_devicemap="${jailsysdir}/${jname}/device.map"
 	# profile
-	readconf bhyve-${vm_os_type}-${vm_os_profile}.conf
-	[ -z "${bhyve_profile}" ] && err 1 "${MAGENTA}No such profile: ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
+	readconf vm-${vm_os_type}-${vm_os_profile}.conf
+	[ -z "${vm_profile}" ] && err 1 "${MAGENTA}No such profile: ${GREEN}vm-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
 	# re-read jail params and apply personal after profile
 	. ${jrcconf}
 
@@ -65,8 +65,8 @@ boot_from_grub()
 	echo "(hd0) ${data}/${MDFILE}" >> "${_devicemap}"
 	echo "(cd0) ${iso_img}" >> "${_devicemap}"
 	cat "${_devicemap}"
-	[ -z "${grub_boot_cmd}" ] && err 1 "${MAGENTA}No such grub_boot_cmd variable. Check ${GREEN}vm_os_profile${MAGENTA} of config for ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${MAGENTA} in ${etcdir}${NORMAL}"
-	[ -z "${grub_iso_cmd}" -a "${vm_boot}" = "cd" ] && err 1 "${MAGENTA}No such grub_iso_cmd variable. Check ${GREEN}vm_os_profile${MANGETA} of config for ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf ${MAGENTA}in ${etcdir}${NORMAL}"
+	[ -z "${grub_boot_cmd}" ] && err 1 "${MAGENTA}No such grub_boot_cmd variable. Check ${GREEN}vm_os_profile${MAGENTA} of config for ${GREEN}vm-${vm_os_type}-${vm_os_profile}.conf${MAGENTA} in ${etcdir}${NORMAL}"
+	[ -z "${grub_iso_cmd}" -a "${vm_boot}" = "cd" ] && err 1 "${MAGENTA}No such grub_iso_cmd variable. Check ${GREEN}vm_os_profile${MANGETA} of config for ${GREEN}vm-${vm_os_type}-${vm_os_profile}.conf ${MAGENTA}in ${etcdir}${NORMAL}"
 }
 
 
@@ -81,9 +81,9 @@ start_bhyve()
 	cd_boot_once=0
 
 	# profile
-	readconf bhyve-${vm_os_type}-${vm_os_profile}.conf
-	if [ -z "${bhyve_profile}" ]; then
-		${ECHO} "${MAGENTA}No such profile: ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
+	readconf vm-${vm_os_type}-${vm_os_profile}.conf
+	if [ -z "${vm_profile}" ]; then
+		${ECHO} "${MAGENTA}No such profile: ${GREEN}vm-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
 		sleep 2
 	fi
 	# re-read jail params and apply personal after profile
@@ -129,8 +129,8 @@ start_bhyve()
 		"linux")
 			_devicemap="${jailsysdir}/${jname}/device.map"
 			# profile
-			readconf bhyve-${vm_os_type}-${vm_os_profile}.conf
-			[ -z "${bhyve_profile}" ] && err 1 "${MAGENTA}No such profile: ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
+			readconf vm-${vm_os_type}-${vm_os_profile}.conf
+			[ -z "${vm_profile}" ] && err 1 "${MAGENTA}No such profile: ${GREEN}vm-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
 			# re-read jail params and apply personal after profile 
 			. ${jrcconf}
 			check_for_empty_hdd
@@ -151,14 +151,14 @@ start_bhyve()
 			echo "(hd0) ${data}/${MDFILE}" >> "${_devicemap}"
 			echo "(cd0) ${iso_img}" >> "${_devicemap}"
 			cat "${_devicemap}"
-			[ -z "${grub_boot_cmd}" ] && err 1 "${MAGENTA}No such grub_boot_cmd variable. Check ${GREEN}vm_os_profile${MAGENTA} of config for ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${MAGENTA} in ${etcdir}${NORMAL}"
-			[ -z "${grub_iso_cmd}" -a "${vm_boot}" = "cd" ] && err 1 "${MAGENTA}No such grub_iso_cmd variable. Check ${GREEN}vm_os_profile${MANGETA} of config for ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf ${MAGENTA}in ${etcdir}${NORMAL}"
+			[ -z "${grub_boot_cmd}" ] && err 1 "${MAGENTA}No such grub_boot_cmd variable. Check ${GREEN}vm_os_profile${MAGENTA} of config for ${GREEN}vm-${vm_os_type}-${vm_os_profile}.conf${MAGENTA} in ${etcdir}${NORMAL}"
+			[ -z "${grub_iso_cmd}" -a "${vm_boot}" = "cd" ] && err 1 "${MAGENTA}No such grub_iso_cmd variable. Check ${GREEN}vm_os_profile${MANGETA} of config for ${GREEN}vm-${vm_os_type}-${vm_os_profile}.conf ${MAGENTA}in ${etcdir}${NORMAL}"
 			;;
 		openbsd|dflybsd|netbsd)
 			_devicemap="${jailsysdir}/${jname}/device.map"
 			# profile
-			readconf bhyve-${vm_os_type}-${vm_os_profile}.conf
-			[ -z "${bhyve_profile}" ] && err 1 "${MAGENTA}No such profile: ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
+			readconf vm-${vm_os_type}-${vm_os_profile}.conf
+			[ -z "${vm_profile}" ] && err 1 "${MAGENTA}No such profile: ${GREEN}vm-${vm_os_type}-${vm_os_profile}.conf${NORMAL}"
 			# re-read jail params and apply personal after profile
 			. ${jrcconf}
 			init_iso
@@ -184,8 +184,8 @@ start_bhyve()
 			echo "(hd0) ${data}/${MDFILE}" >> "${_devicemap}"
 			echo "(cd0) ${iso_img}" >> "${_devicemap}"
 			cat "${_devicemap}"
-			[ -z "${grub_boot_cmd}" ] && err 1 "${MAGENTA}No such grub_boot_cmd variable. Check ${GREEN}vm_os_profile${MAGENTA} of config for ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf${MAGENTA} in ${etcdir}${NORMAL}"
-			[ -z "${grub_iso_cmd}" -a "${vm_boot}" = "cd" ] && err 1 "${MAGENTA}No such grub_iso_cmd variable. Check ${GREEN}vm_os_profile${MANGETA} of config for ${GREEN}bhyve-${vm_os_type}-${vm_os_profile}.conf ${MAGENTA}in ${etcdir}${NORMAL}"
+			[ -z "${grub_boot_cmd}" ] && err 1 "${MAGENTA}No such grub_boot_cmd variable. Check ${GREEN}vm_os_profile${MAGENTA} of config for ${GREEN}vm-${vm_os_type}-${vm_os_profile}.conf${MAGENTA} in ${etcdir}${NORMAL}"
+			[ -z "${grub_iso_cmd}" -a "${vm_boot}" = "cd" ] && err 1 "${MAGENTA}No such grub_iso_cmd variable. Check ${GREEN}vm_os_profile${MANGETA} of config for ${GREEN}vm-${vm_os_type}-${vm_os_profile}.conf ${MAGENTA}in ${etcdir}${NORMAL}"
 			;;
 		*)
 			err 1 "${MAGENTA}Unknown vm profile: ${GREEN}${vm_os_type}${NORMAL}"
