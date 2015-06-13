@@ -62,6 +62,9 @@ init_virtualbox
 [ -z "${vm_ram}" -o -z "${vm_cpus}" -o -z "${vm_os_type}" ] && err 1 "${MAGENTA}Parameter is mandatory: ${GREEN}vm_ram, vm_cpus, vm_os_type${NORMAL}"
 
 
+# hardcoded first disk path from SQL. Todo: mark bootable disk(s)
+MDFILE=$( cbsdsql local SELECT dsk_path FROM ${emulator}dsk WHERE jname=\"${jname}\" AND dsk_type=\"vhd\" LIMIT 1 2>/dev/null )
+
 case "${vm_vnc_port}" in
 	0)
 		vm_port=$( get_next_rd_port )
