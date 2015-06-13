@@ -2,7 +2,7 @@
 #v10.1.5
 MYARG=""
 MYOPTARG="mode"
-MYDESC="Ncurses based Xen guest creation wizard"
+MYDESC="Ncurses based VirtualBox guest creation wizard"
 EXTHELP="wf_xcreate.html"
 ADDHELP="mode=full for all atributes\n"
 
