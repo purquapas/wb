@@ -68,8 +68,8 @@ MDFILE=$( cbsdsql local SELECT dsk_path FROM ${emulator}dsk WHERE jname=\"${jnam
 case "${vm_vnc_port}" in
 	0)
 		vm_port=$( get_next_rd_port )
-		vnc_args="--vrde on --vrdeport ${vm_port}"
-		${ECHO} "${MAGENTA}VRDP is enabled. VNC port: ${GREEN}${vm_port}${NORMAL}"
+		vnc_args="--vrde on --vrdeport ${vm_port} --vncpass cbsd"
+		${ECHO} "${MAGENTA}VRDP is enabled. VNC port: ${GREEN}. ${MAGENTA}VNC pass: 'cbsd'${NORMAL}${vm_port}${NORMAL}"
 		;;
 	1)
 		vm_port=0
