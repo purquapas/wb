@@ -205,7 +205,7 @@ case "${vm_os_type}" in
 		;;
 esac
 
-xl_cmd="cd $kernel_dir && ${XL_CMD} create -c ${jailsysdir}/${jname}/xen.conf"
+xl_cmd="cd $kernel_dir && ${XL_CMD} create -c ${jailsysdir}/${jname}/xen.cfg"
 
 echo "[debug]: $xl_cmd"
 ${tmuxcmd} -2 new -d -s "cbsd-${jname}" "eval $xl_cmd"

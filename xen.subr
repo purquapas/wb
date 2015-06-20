@@ -15,7 +15,8 @@ XL_CMD="/usr/local/sbin/xl"
 # init tmuxcmd
 init_xen()
 {
-
+	tmuxcmd=$(which tmux)
+	[ -z "${tmuxcmd}" ] && err 1 "${MAGENTA}Current version required for ${GREEN}tmux${MAGENTA}\nPlease ${GREEN}pkg install tmux ${MAGENTA} or ${GREEN}make -C /usr/ports/sysutils/tmux install${MAGENTA} it.${NORMAL}"
 }
 
 
