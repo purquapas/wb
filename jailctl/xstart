@@ -52,7 +52,7 @@ fi
 
 make_freebsd_part()
 {
-cat >> $1 << EOF
+/bin/cat >> $1 << EOF
 
 # $vm_os_type specific:
 builder = "hvm"
@@ -62,7 +62,7 @@ EOF
 
 make_linux_part()
 {
-cat >> $1 << EOF
+/bin/cat >> $1 << EOF
 
 # $vm_os_type specific:
 builder = "linux" 
@@ -160,7 +160,7 @@ case "${vm_boot}" in
 		;;
 esac
 
-cat > /tmp/freebsd.cfg << EOF
+cat > ${jailsysdir}/${jname}/xen.cfg << EOF
 name = "${jname}"
 memory = ${xvm_ram}
 vcpus = ${vm_cpus}
@@ -181,7 +181,7 @@ EOF
 
 case "${vm_os_type}" in
 	"freebsd")
-		make_freebsd_part /tmp/freebsd.cfg
+		make_freebsd_part ${jailsysdir}/${jname}/xen.cfg
 		;;
 	"linux")
 		if [ ! -f "${kernel_dir}/initrd.gz" ]; then
@@ -198,14 +198,15 @@ case "${vm_os_type}" in
 				fetchme -o ${kernel_dir}/vmlinuz -u http://ftp.nl.debian.org/debian/dists/wheezy/main/installer-amd64/current/images/netboot/xen/vmlinuz
 			fi
 		fi
-		make_linux_part /tmp/freebsd.cfg
+		make_linux_part ${jailsysdir}/${jname}/xen.cfg
 		;;
 	"windows")
-		make_windows_part /tmp/freebsd.cfg
+		make_windows_part ${jailsysdir}/${jname}/xen.cfg
 		;;
 esac
 
+xl_cmd="cd $kernel_dir && ${XL_CMD} create -c ${jailsysdir}/${jname}/xen.conf"
 
-#/usr/sbin/daemon -f ${VBOX_HEADLESS_CMD} --startvm ${jname}
-
+echo "[debug]: $xl_cmd"
+${tmuxcmd} -2 new -d -s "cbsd-${jname}" "eval $xl_cmd"
 exit 0
