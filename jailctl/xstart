@@ -57,6 +57,7 @@ make_freebsd_part()
 # $vm_os_type specific:
 builder = "hvm"
 serial="pty"
+vncconsole=1
 EOF
 }
 
@@ -84,6 +85,16 @@ acpi = 1
 EOF
 }
 
+make_other_part()
+{
+/bin/cat >> $1 << EOF
+
+# $vm_os_type specific:
+builder='hvm'
+EOF
+}
+
+
 
 # MAIN
 init_xen
@@ -104,6 +115,7 @@ case "${vm_vnc_port}" in
 	0)
 		vm_port=$( get_next_rd_port )
 		vnc_args="--vrde on --vrdeport ${vm_port}"
+		vncdisplay=$(( ${vm_port} - 5900 ))
 		${ECHO} "${MAGENTA}VRDP is enabled. VNC port: ${GREEN}${vm_port}${NORMAL}"
 		;;
 	1)
@@ -185,6 +197,10 @@ ${boot_arg}
 vnc = 1
 vnclisten = "0.0.0.0"
 vncpasswd="cbsd"
+vncdisplay="${vncdisplay}"
+opengl=1
+vncconsole=1
+vncunused=0
 EOF
 
 
@@ -210,6 +226,9 @@ case "${vm_os_type}" in
 		make_linux_part ${jailsysdir}/${jname}/xen.cfg
 		;;
 	"windows")
+		make_windows_part ${jailsysdir}/${jname}/xen.cfg
+		;;
+	"other")
 		make_windows_part ${jailsysdir}/${jname}/xen.cfg
 		;;
 esac
