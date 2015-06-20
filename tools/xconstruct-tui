@@ -155,7 +155,7 @@ default_profile="xen-default-default.conf"
 #defaults
 . ${buildconf}
 
-init_virtualbox
+init_xen
 readconf ${default_profile}
 
 # re-read profile for init global_profile_file variable

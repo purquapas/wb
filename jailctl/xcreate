@@ -210,10 +210,6 @@ if [ ${_res} -eq 0 ]; then
 	[ ! -d "${jailsysdir}/${jname}/etc" ] && /bin/mkdir ${jailsysdir}/${jname}/etc && /usr/sbin/chown cbsd:cbsd ${jailsysdir}/${jname}/etc
 	storeconf xen-${vm_os_type}-${vm_os_profile}.conf ${jailsysdir}/${jname}/etc/xen-${vm_os_type}-${vm_os_profile}.conf
 
-	${VBOX_MGMT_CMD} createvm --name ${jname} --ostype ${xen_ostype} --register
-
-	${VBOX_MGMT_CMD} storagectl ${jname} --name "IDE Controller" --add ide
-	${VBOX_MGMT_CMD} storageattach ${jname} --storagectl "IDE Controller" --port 0 --device 0 --type hdd --medium ${data}/${defdsk}
 	exit 0
 else
 	${ECHO}

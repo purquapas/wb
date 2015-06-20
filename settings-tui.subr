@@ -1157,7 +1157,7 @@ make_virtualbox_part()
 cat >> ${TMPFILE} << EOF
 exec_start="${exec_start}"
 exec_stop="${exec_stop}"
-emulator="virtualbox";
+emulator="${emulator}";
 imgsize="${imgsize}";
 vm_cpus="${vm_cpus}";
 vm_ram="${vm_ram}";
@@ -1267,10 +1267,8 @@ EOF
 		/bin/rm -f ${adduser}
 	fi
 
-	cat >> ${TMPFILE} << EOF
-exec_start="${exec_start}"
-exec_stop="${exec_stop}"
-EOF
+	${SYSRC_CMD} -qf ${TMPFILE} exec_start="${exec_start}" > /dev/null 2>&1
+	${SYSRC_CMD} -qf ${TMPFILE} exec_stop="${exec_stop}" > /dev/null 2>&1
 
 	case "${emulator}" in
 		"bhyve")

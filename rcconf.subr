@@ -42,7 +42,7 @@ init_rcconf()
 	sqllist "${_A}" ${_JCOL}
 
 	case "${emulator}" in
-		"bhyve"|"virtualbox")
+		"bhyve"|"virtualbox"|"xen")
 			. ${sharedir}/${emulator}.conf
 			_BCOL="${MYCOL}"
 			jid=-1

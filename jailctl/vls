@@ -94,9 +94,9 @@ show_jaildata_from_sql()
 		_status=""
 		. ${jrcconf}
 		conv_status
-		${XO} ${CBSDXO} --open bls
+		${XO} ${CBSDXO} --open vls
 		populate_output_data
-		${XO} ${CBSDXO} --close bls
+		${XO} ${CBSDXO} --close vls
 	done
 }
 

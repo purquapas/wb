@@ -238,8 +238,9 @@ xen_create_dsk()
 		imgbytes=$imgsize
 	fi
 
-	${VBOX_MGMT_CMD} createhd --filename ${newdsk} --sizebyte ${imgbytes}
-
+	blockcount=$(( imgbytes  / 1048576 ))
+	/usr/bin/touch "${newdsk}"
+	/bin/dd if="/dev/zero" of="${newdsk}" bs=1m count=0 seek=${blockcount} 1> /dev/null 2>&1 || return 1
 	return 0
 }
 

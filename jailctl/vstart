@@ -18,7 +18,7 @@ readconf buildworld.conf
 readconf jail-freebsd-default.conf
 . ${workdir}/virtualbox.subr
 
-[ -z "${1}" ] && select_jail_by_list -s "List of offline VMs" -a "Off" -e bls -r ${sqlreplica}
+[ -z "${1}" ] && select_jail_by_list -s "List of offline VMs" -a "Off" -e vls -r ${sqlreplica}
 init $*
 
 . ${workdir}/fetch.subr
@@ -96,9 +96,9 @@ else
 fi
 
 
-vm_ram=$(( vm_ram / 1024 / 1024 ))
-echo [debug] ${VBOX_MGMT_CMD} modifyvm ${jname} --memory ${vm_ram} --cpus ${vm_cpus} --floppy disabled --audio none --nic1 bridged --bridgeadapter1 ${interface} --vram 16 --accelerate3d off --boot1 disk --acpi on --cableconnected1 on --usb off ${vnc_args}
-${VBOX_MGMT_CMD} modifyvm ${jname} --memory ${vm_ram} --cpus ${vm_cpus} --floppy disabled --audio none --nic1 bridged --bridgeadapter1 ${interface} --vram 16 --accelerate3d off --boot1 disk --acpi on --cableconnected1 on --usb off ${vnc_args}
+xvm_ram=$(( vm_ram / 1024 / 1024 ))
+echo [debug] ${VBOX_MGMT_CMD} modifyvm ${jname} --memory ${xvm_ram} --cpus ${vm_cpus} --floppy disabled --audio none --nic1 bridged --bridgeadapter1 ${interface} --vram 16 --accelerate3d off --boot1 disk --acpi on --cableconnected1 on --usb off ${vnc_args}
+${VBOX_MGMT_CMD} modifyvm ${jname} --memory ${xvm_ram} --cpus ${vm_cpus} --floppy disabled --audio none --nic1 bridged --bridgeadapter1 ${interface} --vram 16 --accelerate3d off --boot1 disk --acpi on --cableconnected1 on --usb off ${vnc_args}
 
 ${VBOX_MGMT_CMD} modifyvm ${jname} --nictype1 virtio
 
