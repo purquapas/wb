@@ -65,6 +65,6 @@ for i in $( /usr/bin/seq 1 30 ); do
 	fi
 done
 
-${XL_CMD} shutdown -F ${jname}
+${XL_CMD} destroy ${jname}
 echo
 exit 0
