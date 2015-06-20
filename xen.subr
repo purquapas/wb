@@ -15,6 +15,31 @@ XL_CMD="/usr/local/sbin/xl"
 # init tmuxcmd
 init_xen()
 {
+
+	if [ ! -x "${XL_CMD}" ]; then
+		${ECHO} "${MAGENTA}No such: ${XL_CMD}${NORMAL}"
+		cat <<EOF
+
+  Please follow http://wiki.xen.org/wiki/FreeBSD_Dom0 instruction to setup FreeBSD host:
+
+*) pkg install mercurial git bash python bcc glib pkgconf yajl gmake pixman perl5 markdown bison gettext gawk gcc48
+*) sysrc xencommons_enable="YES"
+*) cloned_interfaces="bridge0"
+*) ifconfig_bridge0="addm bge0 SYNCDHCP"
+*) echo 'vm.max_wired=-1' >> /etc/sysctl.conf
+*) echo 'xc0 	"/usr/libexec/getty Pc"         xterm   on  secure' >> /etc/ttys
+*) mkdir -p /var/lock
+*) mkdir -p /var/run/xen
+
+*) echo 'xen_cmdline="dom0_mem=2048M dom0_max_vcpus=4 dom0pvh=1 com1=115200,8n1 guest_loglvl=all loglvl=all console=com1,vga"' >> /boot/loader.conf
+*) echo 'xen_kernel="/boot/xen"' >> /boot/loader.conf
+
+Also if_tap(4) module must be loaded.
+
+EOF
+	exit 0
+	fi
+
 	tmuxcmd=$(which tmux)
 	[ -z "${tmuxcmd}" ] && err 1 "${MAGENTA}Current version required for ${GREEN}tmux${MAGENTA}\nPlease ${GREEN}pkg install tmux ${MAGENTA} or ${GREEN}make -C /usr/ports/sysutils/tmux install${MAGENTA} it.${NORMAL}"
 }
