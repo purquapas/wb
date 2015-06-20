@@ -74,6 +74,15 @@ serial='pty'
 EOF
 }
 
+make_windows_part()
+{
+/bin/cat >> $1 << EOF
+
+# $vm_os_type specific:
+builder='hvm'
+acpi = 1
+EOF
+}
 
 
 # MAIN
