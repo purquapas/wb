@@ -65,14 +65,11 @@ init_virtualbox
 # hardcoded first disk path from SQL. Todo: mark bootable disk(s)
 MDFILE=$( cbsdsql local SELECT dsk_path FROM ${emulator}dsk WHERE jname=\"${jname}\" AND dsk_type=\"vhd\" LIMIT 1 2>/dev/null )
 
-headless_args=""
-
 case "${vm_vnc_port}" in
 	0)
 		vm_port=$( get_next_rd_port )
-		vnc_args="--vrde on --vrdeport ${vm_port} --vncpass cbsd"
-		${ECHO} "${MAGENTA}VRDP is enabled. VNC port: ${GREEN}${vm_port}. ${MAGENTA}VNC pass: 'cbsd'${NORMAL}${NORMAL}"
-		headless_args='--vncpass "cbsd"'
+		vnc_args="--vrde on --vrdeport ${vm_port} --vrdeproperty VNCPassword=cbsd"
+		${ECHO} "${MAGENTA}VRDP is enabled. VNC port: ${GREEN}${vm_port}. ${MAGENTA}VNC pass: ${GREEN}cbsd${NORMAL}${NORMAL}"
 		;;
 	1)
 		vm_port=0
@@ -145,6 +142,6 @@ case "${vm_boot}" in
 		;;
 esac
 
-/usr/sbin/daemon -f ${VBOX_HEADLESS_CMD} ${headless_arg} --startvm ${jname}
+/usr/sbin/daemon -f ${VBOX_HEADLESS_CMD} --startvm ${jname}
 
 exit 0
