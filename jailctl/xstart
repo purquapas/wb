@@ -50,6 +50,32 @@ if [ $# -gt 1 -a -z "${jname}" ]; then
 fi
 
 
+make_freebsd_part()
+{
+cat >> $1 << EOF
+
+# $vm_os_type specific:
+builder = "hvm"
+serial="pty"
+EOF
+}
+
+make_linux_part()
+{
+cat >> $1 << EOF
+
+# $vm_os_type specific:
+builder = "linux" 
+kernel = "${kernel_dir}/vmlinuz"
+ramdisk = "${kernel_dir}/initrd.gz"
+#extra = "debian-installer/exit/always_halt=true -- console=hvc0"
+#sdl=1
+serial='pty'
+EOF
+}
+
+
+
 # MAIN
 init_xen
 
@@ -115,6 +141,9 @@ fi
 
 [ "${vm_iso_path}" != "0" ] && iso_img="${vm_iso_path}"
 
+
+kernel_dir="${srcdir}/iso"
+
 if [ -r "${iso_img}" ]; then
 	${ECHO} "${MAGENTA}Attaching as DVD-DRIVE: ${GREEN}${iso_img}${NORMAL}"
 #	${VBOX_MGMT_CMD} storageattach ${jname} --storagectl "IDE Controller" --port 1 --device 0 --type dvddrive --medium ${iso_img}
@@ -124,13 +153,14 @@ ${ECHO} "${MAGENTA}Boot from: ${GREEN}${vm_boot}${NORMAL}"
 
 case "${vm_boot}" in
 	"hdd")
+		boot_arg='boot="c"'
 		;;
 	"cd")
+		boot_arg='boot="d"'
 		;;
 esac
 
 cat > /tmp/freebsd.cfg << EOF
-builder = "hvm"
 name = "${jname}"
 memory = ${xvm_ram}
 vcpus = ${vm_cpus}
@@ -138,16 +168,43 @@ vcpus = ${vm_cpus}
 # Network devices
 vif = [ 'bridge=bridge0' ]
 
-# Disk Devices
-disk =  [
-        '${data}/${MDFILE},raw,hda,rw',
-        '${iso_img},raw,hdc:cdrom,r'
-        ]
+#disk = ['phy:/dev/zvol/zroot/debian,xvda,w','file:/usr/jails/src/iso/debian-7.8.0-amd64-CD-1.iso,hdc:cdrom,r']
+disk =  ['${data}/${MDFILE},raw,hda,rw','${iso_img},raw,hdc:cdrom,r' ]
+
+${boot_arg}
 
 vnc = 1
 vnclisten = "0.0.0.0"
-serial="pty"
+vncpasswd="cbsd"
 EOF
+
+
+case "${vm_os_type}" in
+	"freebsd")
+		make_freebsd_part /tmp/freebsd.cfg
+		;;
+	"linux")
+		if [ ! -f "${kernel_dir}/initrd.gz" ]; then
+			${ECHO} "${MAGENTA}No such kernel: ${GREEN}initrd.gz${MAGENTA} in ${GREEN}${kernel_dir}${NORMAL}"
+			if getyesno "Shall i download it from: http://ftp.nl.debian.org/debian/dists/wheezy/main/installer-amd64/current/images/netboot/xen/initrd.gz?"; then
+				${ECHO} "${MAGENTA}Download to: ${GREEN}${kernel_dir}/initrd.gz${NORMAL}"
+				fetchme -o ${kernel_dir}/initrd.gz -u http://ftp.nl.debian.org/debian/dists/wheezy/main/installer-amd64/current/images/netboot/xen/initrd.gz
+			fi
+		fi
+		if [ ! -f "${kernel_dir}/vmlinuz" ]; then
+			${ECHO} "${MAGENTA}No such kernel: ${GREEN}vmlinuz${MAGENTA} in ${GREEN}${kernel_dir}${NORMAL}"
+			if getyesno "Shall i download it from: http://ftp.nl.debian.org/debian/dists/wheezy/main/installer-amd64/current/images/netboot/xen/vmlinuz?"; then
+				${ECHO} "${MAGENTA}Download to: ${GREEN}${kernel_dir}/vmlinuz${NORMAL}"
+				fetchme -o ${kernel_dir}/vmlinuz -u http://ftp.nl.debian.org/debian/dists/wheezy/main/installer-amd64/current/images/netboot/xen/vmlinuz
+			fi
+		fi
+		make_linux_part /tmp/freebsd.cfg
+		;;
+	"windows")
+		make_windows_part /tmp/freebsd.cfg
+		;;
+esac
+
 
 #/usr/sbin/daemon -f ${VBOX_HEADLESS_CMD} --startvm ${jname}
 
