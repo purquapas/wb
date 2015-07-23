@@ -1256,7 +1256,7 @@ jailskeldir="${jailskeldir}"
 EOF
 
 	[ -n "${customskel}" ] && /bin/cat >> ${TMPFILE} <<EOF
-jailskeldir="${customskel}"
+customskel="${customskel}"
 EOF
 
 	[ -n "${pkglist}" ] && echo "pkglist=\"${pkglist}\";" >> ${TMPFILE}
