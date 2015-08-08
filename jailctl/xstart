@@ -181,7 +181,8 @@ case "${vm_boot}" in
 	"cd")
 		boot_arg='boot="d"'
 		mkdir -p /mnt/iso
-		mount_cd9660 ${iso_img} /mnt/iso
+		mddev=$( mdconfig -a -t vnode -f ${iso_img} )
+		mount_cd9660 /dev/mddev /mnt/iso
 		;;
 esac
 
