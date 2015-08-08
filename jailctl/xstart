@@ -164,7 +164,6 @@ fi
 
 [ "${vm_iso_path}" != "0" ] && iso_img="${vm_iso_path}"
 
-
 kernel_dir="${srcdir}/iso"
 
 if [ -r "${iso_img}" ]; then
@@ -174,19 +173,32 @@ fi
 
 ${ECHO} "${MAGENTA}Boot from: ${GREEN}${vm_boot}${NORMAL}"
 
+XENCFG="${jailsysdir}/${jname}/xen.cfg"
+/usr/bin/truncate -s0 ${XENCFG}
+
 case "${vm_boot}" in
 	"hdd")
 		boot_arg='boot="c"'
 		;;
 	"cd")
 		boot_arg='boot="d"'
-		mkdir -p /mnt/iso
-		mddev=$( mdconfig -a -t vnode -f ${iso_img} )
-		mount_cd9660 /dev/mddev /mnt/iso
+		isodir=$( /usr/bin/mktemp -d )
+		mddev=$( /sbin/mdconfig -a -t vnode -f ${iso_img} )
+		/sbin/mount_cd9660 /dev/${mddev} ${isodir}
+
+		if [ -f ${isodir}/${iso_vmlinuz_file} ]; then
+			/bin/cp ${isodir}/${iso_vmlinuz_file} /tmp
+			echo "kernel = \"/tmp/vmlinuz\"" >> ${XENCFG}
+		fi
+
+		if [ -f ${isodir}/${iso_initrd_file} ]; then
+			/bin/cp ${isodir}/${iso_initrd_file} /tmp
+			echo "ramdisk = \"/tmp/initrd.img\"" >> ${XENCFG}
+		fi
 		;;
 esac
 
-cat > ${jailsysdir}/${jname}/xen.cfg << EOF
+cat >> ${XENCFG} << EOF
 name = "${jname}"
 memory = ${xvm_ram}
 vcpus = ${vm_cpus}
@@ -211,7 +223,7 @@ EOF
 
 case "${vm_os_type}" in
 	"freebsd")
-		make_freebsd_part ${jailsysdir}/${jname}/xen.cfg
+		make_freebsd_part ${XENCFG}
 		;;
 	"linux")
 		if [ ! -f "${kernel_dir}/initrd.gz" ]; then
@@ -228,17 +240,17 @@ case "${vm_os_type}" in
 				fetchme -o ${kernel_dir}/vmlinuz -u http://ftp.nl.debian.org/debian/dists/wheezy/main/installer-amd64/current/images/netboot/xen/vmlinuz
 			fi
 		fi
-		make_linux_part ${jailsysdir}/${jname}/xen.cfg
+		make_linux_part ${XENCFG}
 		;;
 	"windows")
-		make_windows_part ${jailsysdir}/${jname}/xen.cfg
+		make_windows_part ${XENCFG}
 		;;
 	"other")
-		make_windows_part ${jailsysdir}/${jname}/xen.cfg
+		make_windows_part ${XENCFG}
 		;;
 esac
 
-xl_cmd="cd $kernel_dir && ${XL_CMD} create -c ${jailsysdir}/${jname}/xen.cfg"
+xl_cmd="cd $kernel_dir && ${XL_CMD} create -c ${XENCFG}"
 
 echo "[debug]: $xl_cmd"
 ${tmuxcmd} -2 new -d -s "cbsd-${jname}" "eval $xl_cmd"
