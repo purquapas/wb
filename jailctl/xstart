@@ -246,6 +246,7 @@ esac
 
 xl_cmd="cd $kernel_dir && ${XL_CMD} create -c ${XENCFG}"
 
+compile_nic_args
 echo "[debug]: $xl_cmd"
-${tmuxcmd} -2 new -d -s "cbsd-${jname}" "eval $xl_cmd"
+${tmuxcmd} -2 new -d -s "cbsd-${jname}" "eval ${xl_cmd}"
 exit 0
