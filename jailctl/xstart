@@ -67,8 +67,10 @@ make_linux_part()
 
 # $vm_os_type specific:
 builder = "linux" 
-kernel = "${kernel_dir}/vmlinuz"
-ramdisk = "${kernel_dir}/initrd.gz"
+#kernel = "${kernel_dir}/vmlinuz"
+#ramdisk = "${kernel_dir}/initrd.gz"
+kernel = "/mnt/iso/isolinux/vmlinuz"
+ramdisk = "/mnt/iso/isolinux/initrd.img"
 #extra = "debian-installer/exit/always_halt=true -- console=hvc0"
 #sdl=1
 serial='pty'
@@ -178,6 +180,8 @@ case "${vm_boot}" in
 		;;
 	"cd")
 		boot_arg='boot="d"'
+		mkdir -p /mnt/iso
+		mount_cd9660 ${iso_img} /mnt/iso
 		;;
 esac
 
