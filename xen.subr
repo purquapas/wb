@@ -16,6 +16,17 @@ XL_CMD="/usr/local/sbin/xl"
 init_xen()
 {
 
+	local _required_kmods="if_tap if_bridge" _i _res
+
+	for _i in ${_required_kmods}; do
+		if ! /sbin/kldstat -qm ${_i} >/dev/null 2>&1; then
+			${ECHO} "${MAGENTA}No kldloaded module: ${GREEN}${_i}${NORMAL}"
+			${ECHO} "${MAGENTA}Put ${GREEN}kld_list=\"if_tap if_bridge\"${MAGENTA} into your ${GREEN}/etc/rc.conf${MAGENTA} and execute: ${GREEN}service kld restart${NORMAL}"
+			[ -n "${DIALOG}" ] && read p
+			exit 0
+		fi
+	done
+
 	if [ ! -x "${XL_CMD}" ]; then
 		${ECHO} "${MAGENTA}No such: ${XL_CMD}${NORMAL}"
 		cat <<EOF

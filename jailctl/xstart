@@ -64,34 +64,32 @@ EOF
 make_linux_part()
 {
 
-	case "${vm_boot}" in
-		"cd")
-			isodir=$( /usr/bin/mktemp -d )
-			mddev=$( /sbin/mdconfig -a -t vnode -f ${iso_img} )
-			/sbin/mount_cd9660 /dev/${mddev} ${isodir}
+#	case "${vm_boot}" in
+#		"cd")
+#			isodir=$( /usr/bin/mktemp -d )
+#			mddev=$( /sbin/mdconfig -a -t vnode -f ${iso_img} )
+#			/sbin/mount_cd9660 /dev/${mddev} ${isodir}
 
-			if [ -f ${isodir}/${iso_vmlinuz_file} ]; then
-				/bin/cp -a ${isodir}/${iso_vmlinuz_file} ${jailsysdir}/${jname}/iso_vmlinuz
-				echo "kernel = \"${jailsysdir}/${jname}/iso_vmlinuz\"" >> ${1}
-			else
-				${ECHO} "${MAGENTA}No ${GREEN}${isodir}/${iso_vmlinuz_file}${NORMAL}"
-			fi
+#			if [ -f ${isodir}/${iso_vmlinuz_file} ]; then
+#				/bin/cp -a ${isodir}/${iso_vmlinuz_file} ${jailsysdir}/${jname}/iso_vmlinuz
+#				echo "kernel = \"${jailsysdir}/${jname}/iso_vmlinuz\"" >> ${1}
+#			else
+#				${ECHO} "${MAGENTA}No ${GREEN}${isodir}/${iso_vmlinuz_file}${NORMAL}"
+#			fi
 
-			if [ -f ${isodir}/${iso_initrd_file} ]; then
-				/bin/cp -a ${isodir}/${iso_initrd_file} ${jailsysdir}/${jname}/iso_initrd
-				echo "ramdisk = \"${jailsysdir}/${jname}/iso_initrd\"" >> ${1}
-			else
-				${ECHO} "${MAGENTA} No ${GREEN}${isodir}/${iso_initrd_file}${NORMAL}"
-			fi
-			/sbin/umount ${isodir}
-			/sbin/mdconfig -d -u ${mddev}
-	esac
+#			if [ -f ${isodir}/${iso_initrd_file} ]; then
+#				/bin/cp -a ${isodir}/${iso_initrd_file} ${jailsysdir}/${jname}/iso_initrd
+#				echo "ramdisk = \"${jailsysdir}/${jname}/iso_initrd\"" >> ${1}
+#			else
+#				${ECHO} "${MAGENTA} No ${GREEN}${isodir}/${iso_initrd_file}${NORMAL}"
+#			fi
+#			/sbin/umount ${isodir}
+#			/sbin/mdconfig -d -u ${mddev}
+#	esac
 /bin/cat >> $1 << EOF
 
 # $vm_os_type specific:
-builder = "linux" 
-#kernel = "${kernel_dir}/vmlinuz"
-#ramdisk = "${kernel_dir}/initrd.gz"
+builder = "hvm"
 #kernel = "/mnt/iso/isolinux/vmlinuz"
 #ramdisk = "/mnt/iso/isolinux/initrd.img"
 #extra = "debian-installer/exit/always_halt=true -- console=hvc0"
