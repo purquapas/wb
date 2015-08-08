@@ -30,4 +30,5 @@ etc/defaults/bhyve-linux-ubuntuserver-x86-15.04.conf
 etc/defaults/bhyve-netbsd-x86-6.1.5.conf
 etc/defaults/bhyve-openbsd-x86-5.6.conf
 etc/defaults/vm-linux-centos65-2.6.32-431.el6.x86_64.conf
+etc/defaults/vm-linux-CentOS-7.0-3.10.0-123.el7.x86_64.conf
 "
