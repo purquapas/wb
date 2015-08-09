@@ -76,6 +76,7 @@ apply_cbsd_patchset()
 		10.2)
 			# support for FreeBSD 10.2+
 			patch_kmem102
+			;;
 		10*)
 			# support for FreeBSD 10.2+
 			patch_kmem102
